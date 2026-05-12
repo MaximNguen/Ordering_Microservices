@@ -6,7 +6,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:password@localhost:5432/delivery_db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:12345678@localhost:5432/delivery_db")
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 

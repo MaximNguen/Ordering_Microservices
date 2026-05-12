@@ -14,6 +14,7 @@ class DeliveryStatus(enum.Enum):
     DELIVERED = "delivered"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    DELETED = "deleted"
 
 class Delivery(Base):
     """Класс модели доставки, представляющий таблицу 'deliveries' в базе данных."""

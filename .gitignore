@@ -2,3 +2,4 @@
 idea
 .idea
 .env
+__pycache__

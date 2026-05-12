@@ -1,12 +1,11 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 import logging
 import uuid
 
 from app.models.delivery import Delivery, DeliveryStatus
-from delivery_service.app.services import delivery
 
 class DeliveryRepository:
     """Класс-репозиторий для управления данными о доставках, обеспечивающий взаимодействие с базой данных."""
@@ -36,8 +35,8 @@ class DeliveryRepository:
         self,
         *,
         order_id: uuid.UUID,
-        delivery_person_id: uuid.UUID | None = None,
         address: str,
+        delivery_person_id: uuid.UUID | None = None,
         scheduled_time: datetime | None = None,
         delivery_fee: float = 0.0,
         status: DeliveryStatus | None = None,
@@ -47,6 +46,9 @@ class DeliveryRepository:
             order_id,
             delivery_person_id,
         )
+
+        if scheduled_time and scheduled_time.tzinfo is not None and scheduled_time.tzinfo.utcoffset(scheduled_time) is not None:
+            scheduled_time = scheduled_time.astimezone(timezone.utc).replace(tzinfo=None)
 
         delivery = Delivery(
             order_id=order_id,
@@ -72,13 +74,18 @@ class DeliveryRepository:
     async def update_delivery(
         self,
         delivery_id: uuid.UUID,
-        status: str | None,
+        *,
+        status: DeliveryStatus | None = None,
     ) -> Delivery:
-        self.logger.info(f"Обновление доставки (delivery_id={delivery.delivery_id})")
+        self.logger.info("Обновление доставки (delivery_id=%s)", delivery_id)
+        delivery = await self.get_by_delivery_id(delivery_id)
+        if not delivery:
+            raise ValueError(f"Доставка с ID: {delivery_id} не найдена")
+
+        if status is not None:
+            delivery.status = status
+
         try:
-            await self.db.execute(
-                update(Delivery).where(Delivery.delivery_id == delivery_id).values(status=status)
-            )
             await self.db.commit()
             await self.db.refresh(delivery)
         except Exception as e:
@@ -87,13 +94,18 @@ class DeliveryRepository:
             raise
         return delivery
     
+    # app/repositories/delivery.py
     async def delete_delivery(self, delivery_id: uuid.UUID) -> None:
-        self.logger.info(f"Удаление доставки (delivery_id={delivery_id})")
+        self.logger.info(f"Удаление доставки (delivery_id={str(delivery_id)})")
         try:
-            delivery = await self.get_by_delivery_id(delivery_id)
-            if delivery:
-                await self.db.delete(delivery)
-                await self.db.commit()
+            delivery = await self.db.get(Delivery, delivery_id)
+            
+            if not delivery:
+                raise ValueError(f"Доставка с ID: {delivery_id} не найдена для удаления.")
+            delivery.status = DeliveryStatus.DELETED
+            await self.db.commit()
+            await self.db.refresh(delivery)
+            self.logger.info(f"Доставка {delivery_id} успешно удалена (статус изменен на DELETED)")
         except Exception as e:
             self.logger.error(f"Ошибка при удалении доставки с ID: {delivery_id}, ошибка: {e}")
             await self.db.rollback()
