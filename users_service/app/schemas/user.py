@@ -1,7 +1,4 @@
-from datetime import datetime
 import uuid
-
-from fastapi.params import Form
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
 class User(BaseModel):
@@ -21,3 +18,9 @@ class UserCreate(BaseModel):
     
 class RefreshTokenRequest(BaseModel):
     refresh_token: str = Field(..., description="Refresh токен для получения нового access токена")
+
+class UserWithTokens(BaseModel):
+    user: User
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"

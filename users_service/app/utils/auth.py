@@ -8,8 +8,8 @@ from sqlalchemy import select
 import logging
 
 from app.models import User
-from app.core.dependencies import get_async_db
-from users_service.config import ALGORITHM, SECRET_KEY
+from app.core.database import get_async_db
+from config import ALGORITHM, SECRET_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ def create_access_token(data: dict) -> str:
     """Создание JWT access токена с данными и временем истечения."""
     logger.info("Создание access токена")
     to_encode = data.copy()
+    to_encode.setdefault("token_type", "access")
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)

@@ -2,9 +2,9 @@ import logging
 import uuid
 
 import jwt
-from fastapi import HTTPException, status
 
 from app.repositories.users import UserRepository
+from app.core.exceptions import AuthError
 from app.utils.auth import (
     create_access_token,
     create_refresh_token,
@@ -13,7 +13,7 @@ from app.utils.auth import (
 )
 from app.schemas.user import UserCreate, User as UserSchema
 from app.models.user import User as UserModel, UserRole
-from users_service.config import ALGORITHM, SECRET_KEY
+from config import ALGORITHM, SECRET_KEY
 
 class UserService:
     """Сервис для управления пользователями, предоставляющий бизнес-логику для операций с пользователями."""
@@ -52,8 +52,8 @@ class UserService:
                 return None
         return None
 
-    async def create_user(self, user_create: UserCreate) -> UserSchema | None:
-        """Создать нового пользователя."""
+    async def create_user(self, user_create: UserCreate) -> dict | None:
+        """Создать нового пользователя и выдать токены."""
         self.logger.info(f"Создание нового пользователя с email: {user_create.email}")
         try:
             password_hash = hash_password(user_create.password)
@@ -71,21 +71,42 @@ class UserService:
             if new_user is None:
                 return None
             self.logger.info(f"Пользователь успешно создан: {new_user}")
-            return self._to_user_schema(new_user)
+            role_value = new_user.role.value if isinstance(new_user.role, UserRole) else str(new_user.role)
+            user_id_value = str(new_user.user_id)
+            access_token = create_access_token(
+                data={"sub": new_user.email, "role": role_value, "id": user_id_value}
+            )
+            refresh_token = create_refresh_token(
+                data={"sub": new_user.email, "role": role_value, "id": user_id_value}
+            )
+            return {
+                "user": self._to_user_schema(new_user),
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+            }
         except Exception as e:
             self.logger.error(f"Ошибка при создании пользователя: {e}")
             return None
         
-    async def login(self, email: str, password: str) -> UserSchema | None:
+    async def login(self, username: str, password: str) -> dict | None:
         """Авторизация пользователя по email и паролю."""
-        self.logger.info(f"Авторизация пользователя с email: {email}")
+        self.logger.info(f"Авторизация пользователя с email: {username}")
         try:
-            user = await self.user_repository.get_user_by_email(email)
+            user = await self.user_repository.get_user_by_email(username)
             if user and verify_password(password, user.password_hash):
                 self.logger.info(f"Пользователь успешно авторизован: {user}")
-                return self._to_user_schema(user)
+                role_value = user.role.value if isinstance(user.role, UserRole) else str(user.role)
+                user_id_value = str(user.user_id)
+                access_token = create_access_token(
+                    data={"sub": user.email, "role": role_value, "id": user_id_value}
+                )
+                refresh_token = create_refresh_token(
+                    data={"sub": user.email, "role": role_value, "id": user_id_value}
+                )
+                return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
             else:
-                self.logger.warning(f"Неверные учетные данные для email: {email}")
+                self.logger.warning(f"Неверные учетные данные для email: {username}")
                 return None
         except Exception as e:
             self.logger.error(f"Ошибка при авторизации пользователя: {e}")
@@ -118,11 +139,7 @@ class UserService:
             return None
 
     async def refresh_token(self, refresh_token: str) -> dict:
-        credentials_exception = HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверные учетные данные",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        credentials_exception = AuthError("Неверные учетные данные")
 
         try:
             payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -149,11 +166,7 @@ class UserService:
         return {"refresh_token": new_refresh_token, "token_type": "bearer"}
 
     async def access_token(self, refresh_token: str) -> dict:
-        credentials_exception = HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверные учетные данные",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        credentials_exception = AuthError("Неверные учетные данные")
 
         try:
             payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])

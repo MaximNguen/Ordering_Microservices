@@ -15,6 +15,12 @@ class Base(DeclarativeBase):
 
 AsyncSessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
+async def get_async_db():
+    async with AsyncSessionLocal() as db:
+        logger.info("Получение асинхронной сессии базы данных...")
+        yield db
+        logger.info("Асинхронная сессия базы данных закрыта.")
+
 async def create_db_and_tables():
     async with engine.begin() as conn:
         """Метод для создания базы данных и таблиц при запуске приложения."""
