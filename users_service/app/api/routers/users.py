@@ -34,6 +34,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), user_service: 
 @router.post("/refresh-token")
 async def refresh_token(
     body: RefreshTokenRequest,
+    _current_user=Depends(get_current_user),
     user_service: UserService = Depends(get_user_service),
 ):
     """Обновление refresh токена по действующему refresh токену."""
@@ -42,6 +43,7 @@ async def refresh_token(
 @router.post("/access-token")
 async def access_token(
     body: RefreshTokenRequest,
+    _current_user=Depends(get_current_user),
     user_service: UserService = Depends(get_user_service),
 ):
     """Получение access токена по действующему refresh токену."""
