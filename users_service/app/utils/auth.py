@@ -5,10 +5,13 @@ import jwt
 from fastapi import HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import logging
 
 from app.models import User
 from app.core.dependencies import get_async_db
 from users_service.config import ALGORITHM, SECRET_KEY
+
+logger = logging.getLogger(__name__)
 
 PWD_CONTEXT = CryptContext(schemes=["bcrypt"], deprecated="auto")
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -17,20 +20,24 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="users/token")
 
 def hash_password(password: str) -> str:
     """Хэширование пароля с помощью bcrypt."""
+    logger.info("Хэширование пароля")
     return PWD_CONTEXT.hash(password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Проверка пароля на соответствие хэшу."""
+    logger.info("Проверка пароля")
     return PWD_CONTEXT.verify(plain_password, hashed_password)
 
 def create_access_token(data: dict) -> str:
     """Создание JWT access токена с данными и временем истечения."""
+    logger.info("Создание access токена")
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def create_refresh_token(data: dict) -> str:
+    logger.info("Создание refresh токена")
     to_encode = data.copy()
     refresh = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": refresh, "token_type": "refresh"})
@@ -43,6 +50,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
+        logger.info("Декодирование токена")
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         token_type: str | None = payload.get("token_type")
@@ -56,11 +64,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     return result
 
 async def get_current_seller(current_user: User = Depends(get_current_user)):
+    logger.info("Проверка роли пользователя (Продавец)")
     if current_user.role != "seller":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only sellers can perform this action")
     return current_user
 
 async def get_current_delivery_person(current_user: User = Depends(get_current_user)):
+    logger.info("Проверка роли пользователя (Delivery Person)")
     if current_user.role != "delivery_person":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only sellers can perform this action")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only delivery persons can perform this action")
     return current_user
