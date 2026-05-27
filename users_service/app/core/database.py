@@ -6,7 +6,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:password@localhost:5432/users_db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:12345678@localhost:5432/users_db")
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 
@@ -14,6 +14,12 @@ class Base(DeclarativeBase):
     pass
 
 AsyncSessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+async def get_async_db():
+    async with AsyncSessionLocal() as db:
+        logger.info("Получение асинхронной сессии базы данных...")
+        yield db
+        logger.info("Асинхронная сессия базы данных закрыта.")
 
 async def create_db_and_tables():
     async with engine.begin() as conn:
