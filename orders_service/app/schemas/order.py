@@ -18,6 +18,11 @@ class OrderCreateSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     user_id: uuid.UUID
     items: List[OrderItemSchema]
+    
+class OrderUpdateStatusSchema(BaseModel):
+    """Схема для обновления статуса заказа, определяющая допустимые значения статуса."""
+    model_config = ConfigDict(from_attributes=True)
+    new_status: OrderStatus
 
 class OrderResponseSchema(BaseModel):
     """Схема для ответа API, содержащая информацию о заказе."""
