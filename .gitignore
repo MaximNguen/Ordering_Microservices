@@ -3,4 +3,6 @@ idea
 .idea
 .env
 __pycache__
-logs
+*.log
+logs/
+*.log.*
