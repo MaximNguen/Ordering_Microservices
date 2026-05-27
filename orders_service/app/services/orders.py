@@ -11,8 +11,8 @@ from app.repositories.orders import OrderRepository
 from app.schemas.orders import OrderCreateSchema, OrderResponseSchema, OrderUpdateStatusSchema
 
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8002").rstrip("/")
-INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Call")
-INTERNAL_CALL_VALUE = os.getenv("INTERNAL_CALL_VALUE", "true")
+INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Token")
+INTERNAL_CALL_TOKEN = os.getenv("INTERNAL_CALL_TOKEN", "")
 
 class OrderService:
     """Класс-сервис для управления логики заказов, обеспечивающий взаимодействие между репозиторием и API."""
@@ -22,7 +22,10 @@ class OrderService:
     
     async def create_order(self, order_create: OrderCreateSchema) -> OrderResponseSchema | None:
         self.logger.info(f"Создание заказа для пользователя {order_create.user_id}")
-        headers = {INTERNAL_CALL_HEADER: INTERNAL_CALL_VALUE}
+        if not INTERNAL_CALL_TOKEN:
+            self.logger.error("INTERNAL_CALL_TOKEN is not configured")
+            return None
+        headers = {INTERNAL_CALL_HEADER: INTERNAL_CALL_TOKEN}
         async with httpx.AsyncClient(timeout=10.0) as client:
             product_tasks = [
                 client.get(

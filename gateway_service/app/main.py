@@ -65,8 +65,8 @@ PRODUCTS_SERVICE_URL = os.getenv("PRODUCTS_SERVICE_URL", "http://localhost:8003"
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 CHECK_USER_STATUS = os.getenv("CHECK_USER_STATUS", "true").lower() == "true"
-INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Call")
-INTERNAL_CALL_VALUE = os.getenv("INTERNAL_CALL_VALUE", "true")
+INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Token")
+INTERNAL_CALL_TOKEN = os.getenv("INTERNAL_CALL_TOKEN", "")
 
 HOP_BY_HOP_HEADERS = {"connection", "transfer-encoding", "content-length"}
 
@@ -117,7 +117,7 @@ async def _check_user_status(request: Request, token: str) -> None:
 
 
 async def require_access_token(request: Request) -> dict:
-    if request.headers.get(INTERNAL_CALL_HEADER, "").lower() == INTERNAL_CALL_VALUE.lower():
+    if INTERNAL_CALL_TOKEN and request.headers.get(INTERNAL_CALL_HEADER, "") == INTERNAL_CALL_TOKEN:
         return {"internal": True}
     token = _get_bearer_token(request)
     try:

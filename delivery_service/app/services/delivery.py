@@ -8,8 +8,8 @@ from app.repositories.delivery import DeliveryRepository
 from app.schemas.delivery import DeliveryCreate, DeliveryUpdate, DeliveryResponse
 
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8002").rstrip("/")
-INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Call")
-INTERNAL_CALL_VALUE = os.getenv("INTERNAL_CALL_VALUE", "true")
+INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Token")
+INTERNAL_CALL_TOKEN = os.getenv("INTERNAL_CALL_TOKEN", "")
 
 class DeliveryService:
     """Класс-сервис для управления логикой доставки, обеспечивающий взаимодействие между репозиторием и API."""
@@ -19,7 +19,10 @@ class DeliveryService:
         
     async def create_delivery(self, delivery_create: DeliveryCreate) -> DeliveryResponse | None:
         self.logger.info(f"Создание доставки для заказа {delivery_create.order_id}")
-        headers = {INTERNAL_CALL_HEADER: INTERNAL_CALL_VALUE}
+        if not INTERNAL_CALL_TOKEN:
+            self.logger.error("INTERNAL_CALL_TOKEN is not configured")
+            return None
+        headers = {INTERNAL_CALL_HEADER: INTERNAL_CALL_TOKEN}
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
                 f"{GATEWAY_URL}/orders/{delivery_create.order_id}",
