@@ -1,12 +1,12 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
-from datetime import datetime, timezone
-from typing import List
 import logging
 import uuid
+from typing import List
+
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.order import Order, OrderStatus
-from orders_service.app.models.orderItem import OrderItem
+from app.models.orderItem import OrderItem
 
 class OrderRepository:
     """Класс-репозиторий для управления данными о заказах"""
@@ -14,12 +14,20 @@ class OrderRepository:
         self.db = db
         self.logger = logging.getLogger(__name__)
         
-    async def get_all_orders(self, skip: int = 0, limit: int = 100, filter = None) -> List[Order]:
+    async def get_all_orders(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        user_id: uuid.UUID | None = None,
+        status: OrderStatus | None = None,
+    ) -> List[Order]:
         self.logger.info("Получение всех заказов")
         try:
             query = select(Order).offset(skip).limit(limit)
-            if filter is not None:
-                query = query.where(filter)
+            if user_id is not None:
+                query = query.where(Order.user_id == user_id)
+            if status is not None:
+                query = query.where(Order.status == status)
             result = await self.db.scalars(query)
         except Exception as e:
             self.logger.error(f"Ошибка при получении всех заказов, ошибка: {e}")
@@ -38,16 +46,14 @@ class OrderRepository:
     async def create_order(self, *, user_id: uuid.UUID, items: List[OrderItem]) -> Order | None:
         self.logger.info(f"Создание заказа для пользователя: {user_id}")
         try:
-            if items:
-                total_amount = sum(item.price * item.quantity for item in items)
-            else:
-                total_amount = 0.0
+            items = items or []
+            total_amount = sum(item.price_per_unit * item.quantity for item in items)
             order = Order(
-                order_id=uuid.uuid4(),
                 user_id=user_id,
                 status=OrderStatus.PENDING,
                 total_amount=total_amount,
             )
+            order.items = items
             self.db.add(order)
             await self.db.commit()
             await self.db.refresh(order)

@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from app.core.database import create_db_and_tables
+from app.api.routers import orders
 
 
 def _find_file_handler(logger: logging.Logger, log_file: Path) -> RotatingFileHandler | None:
@@ -69,6 +70,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Orders service", lifespan=lifespan)
 
+app.include_router(orders.router)
 
 @app.get("/")
 async def root():

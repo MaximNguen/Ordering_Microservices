@@ -60,6 +60,7 @@ logger = logging.getLogger(__name__)
 
 USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://localhost:8000").rstrip("/")
 DELIVERY_SERVICE_URL = os.getenv("DELIVERY_SERVICE_URL", "http://localhost:8001").rstrip("/")
+ORDERS_SERVICE_URL = os.getenv("ORDERS_SERVICE_URL", "http://localhost:8002").rstrip("/")
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 CHECK_USER_STATUS = os.getenv("CHECK_USER_STATUS", "true").lower() == "true"
@@ -172,6 +173,18 @@ async def users_proxy(request: Request):
 )
 async def deliveries_proxy(request: Request):
     return await _proxy_request(request, DELIVERY_SERVICE_URL)
+
+
+@app.api_route(
+    "/orders", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], dependencies=[Depends(require_access_token)]
+)
+@app.api_route(
+    "/orders/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    dependencies=[Depends(require_access_token)],
+)
+async def orders_proxy(request: Request):
+    return await _proxy_request(request, ORDERS_SERVICE_URL)
 
 
 @app.get("/")
