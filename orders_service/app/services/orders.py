@@ -1,10 +1,18 @@
+import asyncio
 import logging
+import os
 import uuid
+
+import httpx
 
 from app.models.order import OrderStatus
 from app.models.orderItem import OrderItem
 from app.repositories.orders import OrderRepository
 from app.schemas.orders import OrderCreateSchema, OrderResponseSchema, OrderUpdateStatusSchema
+
+GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8002").rstrip("/")
+INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Call")
+INTERNAL_CALL_VALUE = os.getenv("INTERNAL_CALL_VALUE", "true")
 
 class OrderService:
     """Класс-сервис для управления логики заказов, обеспечивающий взаимодействие между репозиторием и API."""
@@ -12,17 +20,40 @@ class OrderService:
         self.order_repo = order_repo
         self.logger = logging.getLogger(__name__)
     
-    async def create_order(self, order_create: OrderCreateSchema) -> OrderResponseSchema:
+    async def create_order(self, order_create: OrderCreateSchema) -> OrderResponseSchema | None:
         self.logger.info(f"Создание заказа для пользователя {order_create.user_id}")
-        items = [
-            OrderItem(
-                product_id=item.product_id,
-                product_name=item.product_name,
-                quantity=item.quantity,
-                price_per_unit=item.price_per_unit,
+        headers = {INTERNAL_CALL_HEADER: INTERNAL_CALL_VALUE}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            product_tasks = [
+                client.get(
+                    f"{GATEWAY_URL}/products/{item.product_id}",
+                    headers=headers,
+                )
+                for item in order_create.items
+            ]
+            responses = await asyncio.gather(*product_tasks, return_exceptions=True)
+
+        items: list[OrderItem] = []
+        for item, response in zip(order_create.items, responses, strict=False):
+            if isinstance(response, Exception):
+                self.logger.error("Ошибка при запросе продукта %s: %s", item.product_id, response)
+                return None
+            if response.status_code != 200:
+                self.logger.warning(
+                    "Продукт не найден или недоступен: %s (status=%s)",
+                    item.product_id,
+                    response.status_code,
+                )
+                return None
+            payload = response.json()
+            items.append(
+                OrderItem(
+                    product_id=item.product_id,
+                    product_name=payload.get("name", ""),
+                    quantity=item.quantity,
+                    price_per_unit=payload.get("price", 0.0),
+                )
             )
-            for item in order_create.items
-        ]
         db_order = await self.order_repo.create_order(
             user_id=order_create.user_id,
             items=items,

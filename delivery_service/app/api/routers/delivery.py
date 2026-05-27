@@ -25,7 +25,10 @@ async def create_delivery(
     delivery_service: DeliveryService = Depends(get_delivery_service)
 ):
     """Создать новую доставку на основе данных из запроса."""
-    return await delivery_service.create_delivery(delivery_create)
+    delivery = await delivery_service.create_delivery(delivery_create)
+    if not delivery:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
+    return delivery
 
 @router.get("/{delivery_id}", response_model=DeliveryResponse, status_code=status.HTTP_200_OK)
 async def get_delivery_by_id(

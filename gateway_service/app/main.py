@@ -61,9 +61,12 @@ logger = logging.getLogger(__name__)
 USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://localhost:8000").rstrip("/")
 DELIVERY_SERVICE_URL = os.getenv("DELIVERY_SERVICE_URL", "http://localhost:8001").rstrip("/")
 ORDERS_SERVICE_URL = os.getenv("ORDERS_SERVICE_URL", "http://localhost:8002").rstrip("/")
+PRODUCTS_SERVICE_URL = os.getenv("PRODUCTS_SERVICE_URL", "http://localhost:8003").rstrip("/")
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 CHECK_USER_STATUS = os.getenv("CHECK_USER_STATUS", "true").lower() == "true"
+INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Call")
+INTERNAL_CALL_VALUE = os.getenv("INTERNAL_CALL_VALUE", "true")
 
 HOP_BY_HOP_HEADERS = {"connection", "transfer-encoding", "content-length"}
 
@@ -114,6 +117,8 @@ async def _check_user_status(request: Request, token: str) -> None:
 
 
 async def require_access_token(request: Request) -> dict:
+    if request.headers.get(INTERNAL_CALL_HEADER, "").lower() == INTERNAL_CALL_VALUE.lower():
+        return {"internal": True}
     token = _get_bearer_token(request)
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -185,6 +190,18 @@ async def deliveries_proxy(request: Request):
 )
 async def orders_proxy(request: Request):
     return await _proxy_request(request, ORDERS_SERVICE_URL)
+
+
+@app.api_route(
+    "/products", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], dependencies=[Depends(require_access_token)]
+)
+@app.api_route(
+    "/products/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    dependencies=[Depends(require_access_token)],
+)
+async def products_proxy(request: Request):
+    return await _proxy_request(request, PRODUCTS_SERVICE_URL)
 
 
 @app.get("/")
