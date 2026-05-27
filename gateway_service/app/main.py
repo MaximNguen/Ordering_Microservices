@@ -6,8 +6,23 @@ from pathlib import Path
 
 import httpx
 import jwt
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, Security, status
+from fastapi.security import HTTPBearer
 
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+if load_dotenv:
+    load_dotenv()
+
+tags_metadata = [
+    {"name": "users", "description": "Users service"},
+    {"name": "products", "description": "Products service"},
+    {"name": "orders", "description": "Orders service"},
+    {"name": "deliveries", "description": "Delivery service"},
+]
 
 def _find_file_handler(logger: logging.Logger, log_file: Path) -> RotatingFileHandler | None:
     target = log_file.resolve()
@@ -68,6 +83,8 @@ CHECK_USER_STATUS = os.getenv("CHECK_USER_STATUS", "true").lower() == "true"
 INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Token")
 INTERNAL_CALL_TOKEN = os.getenv("INTERNAL_CALL_TOKEN", "")
 
+bearer_scheme = HTTPBearer(auto_error=False)
+
 HOP_BY_HOP_HEADERS = {"connection", "transfer-encoding", "content-length"}
 
 @asynccontextmanager
@@ -76,7 +93,7 @@ async def lifespan(app: FastAPI):
     yield
     await app.state.http.aclose()
 
-app = FastAPI(title="API Gateway", lifespan=lifespan)
+app = FastAPI(title="API Gateway", lifespan=lifespan, openapi_tags=tags_metadata)
 
 
 def _filter_headers(headers: httpx.Headers) -> dict:
@@ -138,10 +155,11 @@ async def require_access_token(request: Request) -> dict:
 
     await _check_user_status(request, token)
     return payload
-
+    
 
 async def _proxy_request(request: Request, base_url: str) -> Response:
-    url = httpx.URL(f"{base_url}{request.url.path}").copy_with(query=request.url.query)
+    raw_query = request.scope.get("query_string", b"")
+    url = httpx.URL(f"{base_url}{request.url.path}").copy_with(query=raw_query)
     headers = dict(request.headers)
     headers.pop("host", None)
     headers.pop("content-length", None)
@@ -162,43 +180,55 @@ async def _proxy_request(request: Request, base_url: str) -> Response:
     )
 
 
-@app.api_route("/users", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-@app.api_route("/users/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/users", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], tags=["users"])
+@app.api_route("/users/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], tags=["users"])
 async def users_proxy(request: Request):
     return await _proxy_request(request, USERS_SERVICE_URL)
 
 
 @app.api_route(
-    "/deliveries", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], dependencies=[Depends(require_access_token)]
+    "/deliveries",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    dependencies=[Security(bearer_scheme), Depends(require_access_token)],
+    tags=["deliveries"],
 )
 @app.api_route(
     "/deliveries/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    dependencies=[Depends(require_access_token)],
+    dependencies=[Security(bearer_scheme), Depends(require_access_token)],
+    tags=["deliveries"],
 )
 async def deliveries_proxy(request: Request):
     return await _proxy_request(request, DELIVERY_SERVICE_URL)
 
 
 @app.api_route(
-    "/orders", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], dependencies=[Depends(require_access_token)]
+    "/orders",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    dependencies=[Security(bearer_scheme), Depends(require_access_token)],
+    tags=["orders"],
 )
 @app.api_route(
     "/orders/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    dependencies=[Depends(require_access_token)],
+    dependencies=[Security(bearer_scheme), Depends(require_access_token)],
+    tags=["orders"],
 )
 async def orders_proxy(request: Request):
     return await _proxy_request(request, ORDERS_SERVICE_URL)
 
 
 @app.api_route(
-    "/products", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], dependencies=[Depends(require_access_token)]
+    "/products",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    dependencies=[Security(bearer_scheme), Depends(require_access_token)],
+    tags=["products"],
 )
 @app.api_route(
     "/products/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    dependencies=[Depends(require_access_token)],
+    dependencies=[Security(bearer_scheme), Depends(require_access_token)],
+    tags=["products"],
 )
 async def products_proxy(request: Request):
     return await _proxy_request(request, PRODUCTS_SERVICE_URL)

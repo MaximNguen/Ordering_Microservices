@@ -5,3 +5,4 @@ asyncpg
 aiosqlite
 alembic
 greenlet
+python-dotenv

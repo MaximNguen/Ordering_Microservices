@@ -6,6 +6,14 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+if load_dotenv:
+    load_dotenv()
+
 from app.api.routers import products
 from app.core.database import create_db_and_tables
 

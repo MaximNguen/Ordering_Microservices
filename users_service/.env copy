@@ -1,0 +1,13 @@
+INTERNAL_CALL_HEADER=X-Internal-Token
+INTERNAL_CALL_TOKEN=WhyAreYouGay
+
+GATEWAY_URL=http://localhost:8002
+
+USERS_SERVICE_URL=http://localhost:8000
+DELIVERY_SERVICE_URL=http://localhost:8001
+ORDERS_SERVICE_URL=http://localhost:8002
+PRODUCTS_SERVICE_URL=http://localhost:8003
+
+SECRET_KEY=uWontPassNigger
+ALGORITHM=HS256
+CHECK_USER_STATUS=true

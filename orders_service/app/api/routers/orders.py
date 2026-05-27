@@ -1,15 +1,19 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi.security import HTTPBearer
 
 from app.core.dependencies import get_order_service
 from app.models.order import OrderStatus
 from app.schemas.orders import OrderCreateSchema, OrderResponseSchema, OrderUpdateStatusSchema
 from app.services.orders import OrderService
 
+bearer_scheme = HTTPBearer(auto_error=False)
+
 router = APIRouter(
     prefix="/orders",
-    tags=["orders"]
+    tags=["orders"],
+    dependencies=[Security(bearer_scheme)],
 )
 
 @router.get("/", response_model=list[OrderResponseSchema], status_code=status.HTTP_200_OK)

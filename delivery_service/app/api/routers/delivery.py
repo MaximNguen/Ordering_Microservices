@@ -1,13 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status
 import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi.security import HTTPBearer
 
 from app.core.dependencies import get_delivery_service
 from app.schemas.delivery import DeliveryCreate, DeliveryUpdate, DeliveryResponse
 from app.services.delivery import DeliveryService
 
+bearer_scheme = HTTPBearer(auto_error=False)
+
 router = APIRouter(
     prefix="/deliveries",
-    tags=["deliveries"]
+    tags=["deliveries"],
+    dependencies=[Security(bearer_scheme)],
 )
 
 @router.get("/", response_model=list[DeliveryResponse], status_code=status.HTTP_200_OK)

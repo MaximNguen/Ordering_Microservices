@@ -7,6 +7,14 @@ from pathlib import Path
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+if load_dotenv:
+    load_dotenv()
+
 from app.core.database import create_db_and_tables
 from app.core.exceptions import AuthError
 from app.api.routers import users

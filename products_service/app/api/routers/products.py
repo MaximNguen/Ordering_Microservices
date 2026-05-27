@@ -1,14 +1,18 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi.security import HTTPBearer
 
 from app.core.dependencies import get_product_service
 from app.schemas.product import ProductCreate, ProductResponse, ProductUpdate
 from app.services.products import ProductService
 
+bearer_scheme = HTTPBearer(auto_error=False)
+
 router = APIRouter(
     prefix="/products",
     tags=["products"],
+    dependencies=[Security(bearer_scheme)],
 )
 
 
