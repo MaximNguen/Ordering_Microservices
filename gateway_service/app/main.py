@@ -1,18 +1,89 @@
 import logging
 import os
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 import httpx
 import jwt
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, Security, status
+from fastapi.security import HTTPBearer
 
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+if load_dotenv:
+    load_dotenv()
+
+tags_metadata = [
+    {"name": "users", "description": "Users service"},
+    {"name": "products", "description": "Products service"},
+    {"name": "orders", "description": "Orders service"},
+    {"name": "deliveries", "description": "Delivery service"},
+]
+
+def _find_file_handler(logger: logging.Logger, log_file: Path) -> RotatingFileHandler | None:
+    target = log_file.resolve()
+    for handler in logger.handlers:
+        if isinstance(handler, RotatingFileHandler):
+            try:
+                if Path(handler.baseFilename).resolve() == target:
+                    return handler
+            except OSError:
+                continue
+    return None
+
+
+def _configure_logging() -> None:
+    log_dir = Path(os.getenv("LOG_DIR", "logs"))
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "gateway_service.log"
+
+    log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_level = getattr(logging, log_level_name, logging.INFO)
+    max_bytes = int(os.getenv("LOG_MAX_BYTES", "1000000"))
+    backup_count = int(os.getenv("LOG_BACKUP_COUNT", "3"))
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+
+    file_handler = _find_file_handler(root_logger, log_file)
+    if file_handler is None:
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(log_level)
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+        )
+        root_logger.addHandler(file_handler)
+
+    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uvicorn_logger = logging.getLogger(logger_name)
+        uvicorn_logger.setLevel(log_level)
+        if not uvicorn_logger.propagate and _find_file_handler(uvicorn_logger, log_file) is None:
+            uvicorn_logger.addHandler(file_handler)
+
+
+_configure_logging()
 logger = logging.getLogger(__name__)
 
 USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://localhost:8000").rstrip("/")
 DELIVERY_SERVICE_URL = os.getenv("DELIVERY_SERVICE_URL", "http://localhost:8001").rstrip("/")
+ORDERS_SERVICE_URL = os.getenv("ORDERS_SERVICE_URL", "http://localhost:8002").rstrip("/")
+PRODUCTS_SERVICE_URL = os.getenv("PRODUCTS_SERVICE_URL", "http://localhost:8003").rstrip("/")
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 CHECK_USER_STATUS = os.getenv("CHECK_USER_STATUS", "true").lower() == "true"
+INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Token")
+INTERNAL_CALL_TOKEN = os.getenv("INTERNAL_CALL_TOKEN", "")
+
+bearer_scheme = HTTPBearer(auto_error=False)
 
 HOP_BY_HOP_HEADERS = {"connection", "transfer-encoding", "content-length"}
 
@@ -22,7 +93,7 @@ async def lifespan(app: FastAPI):
     yield
     await app.state.http.aclose()
 
-app = FastAPI(title="API Gateway", lifespan=lifespan)
+app = FastAPI(title="API Gateway", lifespan=lifespan, openapi_tags=tags_metadata)
 
 
 def _filter_headers(headers: httpx.Headers) -> dict:
@@ -63,6 +134,8 @@ async def _check_user_status(request: Request, token: str) -> None:
 
 
 async def require_access_token(request: Request) -> dict:
+    if INTERNAL_CALL_TOKEN and request.headers.get(INTERNAL_CALL_HEADER, "") == INTERNAL_CALL_TOKEN:
+        return {"internal": True}
     token = _get_bearer_token(request)
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -82,10 +155,11 @@ async def require_access_token(request: Request) -> dict:
 
     await _check_user_status(request, token)
     return payload
-
+    
 
 async def _proxy_request(request: Request, base_url: str) -> Response:
-    url = httpx.URL(f"{base_url}{request.url.path}").copy_with(query=request.url.query)
+    raw_query = request.scope.get("query_string", b"")
+    url = httpx.URL(f"{base_url}{request.url.path}").copy_with(query=raw_query)
     headers = dict(request.headers)
     headers.pop("host", None)
     headers.pop("content-length", None)
@@ -106,22 +180,58 @@ async def _proxy_request(request: Request, base_url: str) -> Response:
     )
 
 
-@app.api_route("/users", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-@app.api_route("/users/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/users", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], tags=["users"])
+@app.api_route("/users/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], tags=["users"])
 async def users_proxy(request: Request):
     return await _proxy_request(request, USERS_SERVICE_URL)
 
 
 @app.api_route(
-    "/deliveries", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], dependencies=[Depends(require_access_token)]
+    "/deliveries",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    dependencies=[Security(bearer_scheme), Depends(require_access_token)],
+    tags=["deliveries"],
 )
 @app.api_route(
     "/deliveries/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    dependencies=[Depends(require_access_token)],
+    dependencies=[Security(bearer_scheme), Depends(require_access_token)],
+    tags=["deliveries"],
 )
 async def deliveries_proxy(request: Request):
     return await _proxy_request(request, DELIVERY_SERVICE_URL)
+
+
+@app.api_route(
+    "/orders",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    dependencies=[Security(bearer_scheme), Depends(require_access_token)],
+    tags=["orders"],
+)
+@app.api_route(
+    "/orders/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    dependencies=[Security(bearer_scheme), Depends(require_access_token)],
+    tags=["orders"],
+)
+async def orders_proxy(request: Request):
+    return await _proxy_request(request, ORDERS_SERVICE_URL)
+
+
+@app.api_route(
+    "/products",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    dependencies=[Security(bearer_scheme), Depends(require_access_token)],
+    tags=["products"],
+)
+@app.api_route(
+    "/products/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    dependencies=[Security(bearer_scheme), Depends(require_access_token)],
+    tags=["products"],
+)
+async def products_proxy(request: Request):
+    return await _proxy_request(request, PRODUCTS_SERVICE_URL)
 
 
 @app.get("/")

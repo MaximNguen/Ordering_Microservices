@@ -1,13 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status
 import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi.security import HTTPBearer
 
 from app.core.dependencies import get_delivery_service
 from app.schemas.delivery import DeliveryCreate, DeliveryUpdate, DeliveryResponse
 from app.services.delivery import DeliveryService
 
+bearer_scheme = HTTPBearer(auto_error=False)
+
 router = APIRouter(
     prefix="/deliveries",
-    tags=["deliveries"]
+    tags=["deliveries"],
+    dependencies=[Security(bearer_scheme)],
 )
 
 @router.get("/", response_model=list[DeliveryResponse], status_code=status.HTTP_200_OK)
@@ -25,7 +30,10 @@ async def create_delivery(
     delivery_service: DeliveryService = Depends(get_delivery_service)
 ):
     """Создать новую доставку на основе данных из запроса."""
-    return await delivery_service.create_delivery(delivery_create)
+    delivery = await delivery_service.create_delivery(delivery_create)
+    if not delivery:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
+    return delivery
 
 @router.get("/{delivery_id}", response_model=DeliveryResponse, status_code=status.HTTP_200_OK)
 async def get_delivery_by_id(

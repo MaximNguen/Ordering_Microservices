@@ -3,3 +3,5 @@ uvicorn
 sqlalchemy
 aiosqlite
 greenlet
+httpx
+python-dotenv

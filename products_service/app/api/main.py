@@ -4,8 +4,7 @@ import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 
 try:
     from dotenv import load_dotenv
@@ -15,9 +14,8 @@ except ImportError:
 if load_dotenv:
     load_dotenv()
 
+from app.api.routers import products
 from app.core.database import create_db_and_tables
-from app.core.exceptions import AuthError
-from app.api.routers import users
 
 
 def _find_file_handler(logger: logging.Logger, log_file: Path) -> RotatingFileHandler | None:
@@ -35,7 +33,7 @@ def _find_file_handler(logger: logging.Logger, log_file: Path) -> RotatingFileHa
 def _configure_logging() -> None:
     log_dir = Path(os.getenv("LOG_DIR", "logs"))
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / "users_service.log"
+    log_file = log_dir / "products_service.log"
 
     log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
@@ -69,28 +67,20 @@ def _configure_logging() -> None:
 _configure_logging()
 logger = logging.getLogger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # await create_db_and_tables()
-    logger.info("Запускаем создание БД.")
+    logger.info("Starting database initialization.")
     yield
-    logger.info("Заканчиваем работу.")
-    
-app = FastAPI(
-    title="Сервис пользователей/авторизации",
-    lifespan=lifespan
-)
+    logger.info("Shutting down.")
 
-app.include_router(users.router)
 
-@app.exception_handler(AuthError)
-async def auth_error_handler(request: Request, exc: AuthError):
-    return JSONResponse(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        content={"detail": exc.detail},
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+app = FastAPI(title="Products service", lifespan=lifespan)
+
+app.include_router(products.router)
+
 
 @app.get("/")
 async def root():
-    return {"message": "Сервис доставки работает!"}
+    return {"message": "Products service is running"}

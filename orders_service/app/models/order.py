@@ -6,7 +6,7 @@ import uuid
 import enum
 
 from app.core.database import Base
-from orders_service.app.models.orderItem import OrderItem
+from app.models.orderItem import OrderItem
 
 class OrderStatus(enum.Enum):
     PENDING = "pending"

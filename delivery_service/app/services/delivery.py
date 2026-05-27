@@ -1,8 +1,15 @@
-import uuid
 import logging
+import os
+import uuid
+
+import httpx
 
 from app.repositories.delivery import DeliveryRepository
 from app.schemas.delivery import DeliveryCreate, DeliveryUpdate, DeliveryResponse
+
+GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8002").rstrip("/")
+INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Token")
+INTERNAL_CALL_TOKEN = os.getenv("INTERNAL_CALL_TOKEN", "")
 
 class DeliveryService:
     """Класс-сервис для управления логикой доставки, обеспечивающий взаимодействие между репозиторием и API."""
@@ -10,8 +17,24 @@ class DeliveryService:
         self.delivery_repo = delivery_repo
         self.logger = logging.getLogger(__name__)
         
-    async def create_delivery(self, delivery_create: DeliveryCreate) -> DeliveryResponse:
+    async def create_delivery(self, delivery_create: DeliveryCreate) -> DeliveryResponse | None:
         self.logger.info(f"Создание доставки для заказа {delivery_create.order_id}")
+        if not INTERNAL_CALL_TOKEN:
+            self.logger.error("INTERNAL_CALL_TOKEN is not configured")
+            return None
+        headers = {INTERNAL_CALL_HEADER: INTERNAL_CALL_TOKEN}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{GATEWAY_URL}/orders/{delivery_create.order_id}",
+                headers=headers,
+            )
+        if response.status_code != 200:
+            self.logger.warning(
+                "Заказ не найден или недоступен: %s (status=%s)",
+                delivery_create.order_id,
+                response.status_code,
+            )
+            return None
         db_delivery = await self.delivery_repo.create_delivery(
             order_id=delivery_create.order_id,
             address=delivery_create.address,

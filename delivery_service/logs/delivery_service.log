@@ -1,0 +1,128 @@
+2026-05-27 23:35:19,201 INFO uvicorn.error: Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+2026-05-27 23:35:19,201 INFO uvicorn.error: Started reloader process [14096] using StatReload
+2026-05-27 23:35:20,142 INFO uvicorn.error: Started server process [15756]
+2026-05-27 23:35:20,143 INFO uvicorn.error: Waiting for application startup.
+2026-05-27 23:35:20,143 INFO app.api.main: Запускаем создание БД.
+2026-05-27 23:35:20,143 INFO uvicorn.error: Application startup complete.
+2026-05-27 23:45:52,496 WARNING uvicorn.error: StatReload detected changes in 'app\api\routers\delivery.py'. Reloading...
+2026-05-27 23:45:52,539 INFO uvicorn.error: Shutting down
+2026-05-27 23:45:52,650 INFO uvicorn.error: Waiting for application shutdown.
+2026-05-27 23:45:52,650 INFO app.api.main: Заканчиваем работу.
+2026-05-27 23:45:52,651 INFO uvicorn.error: Application shutdown complete.
+2026-05-27 23:45:52,651 INFO uvicorn.error: Finished server process [15756]
+2026-05-27 23:45:54,167 INFO uvicorn.error: Started server process [13796]
+2026-05-27 23:45:54,167 INFO uvicorn.error: Waiting for application startup.
+2026-05-27 23:45:54,168 INFO app.api.main: Запускаем создание БД.
+2026-05-27 23:45:54,168 INFO uvicorn.error: Application startup complete.
+2026-05-27 23:59:42,805 WARNING uvicorn.error: StatReload detected changes in 'app\api\routers\delivery.py'. Reloading...
+2026-05-27 23:59:42,841 INFO uvicorn.error: Shutting down
+2026-05-27 23:59:42,951 INFO uvicorn.error: Waiting for application shutdown.
+2026-05-27 23:59:42,951 INFO app.api.main: Заканчиваем работу.
+2026-05-27 23:59:42,952 INFO uvicorn.error: Application shutdown complete.
+2026-05-27 23:59:42,952 INFO uvicorn.error: Finished server process [13796]
+2026-05-27 23:59:44,362 INFO uvicorn.error: Started server process [16684]
+2026-05-27 23:59:44,362 INFO uvicorn.error: Waiting for application startup.
+2026-05-27 23:59:44,363 INFO app.api.main: Запускаем создание БД.
+2026-05-27 23:59:44,363 INFO uvicorn.error: Application startup complete.
+2026-05-28 00:00:14,202 INFO uvicorn.error: Shutting down
+2026-05-28 00:00:14,309 INFO uvicorn.error: Waiting for application shutdown.
+2026-05-28 00:00:14,310 INFO app.api.main: Заканчиваем работу.
+2026-05-28 00:00:14,310 INFO uvicorn.error: Application shutdown complete.
+2026-05-28 00:00:14,311 INFO uvicorn.error: Finished server process [16684]
+2026-05-28 00:00:14,512 INFO uvicorn.error: Stopping reloader process [14096]
+2026-05-28 00:00:16,440 INFO uvicorn.error: Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+2026-05-28 00:00:16,440 INFO uvicorn.error: Started reloader process [7036] using StatReload
+2026-05-28 00:00:17,440 INFO uvicorn.error: Started server process [17320]
+2026-05-28 00:00:17,441 INFO uvicorn.error: Waiting for application startup.
+2026-05-28 00:00:17,441 INFO app.api.main: Запускаем создание БД.
+2026-05-28 00:00:17,441 INFO uvicorn.error: Application startup complete.
+2026-05-28 00:02:06,803 INFO uvicorn.access: 127.0.0.1:52521 - "GET /docs HTTP/1.1" 200
+2026-05-28 00:02:06,945 INFO uvicorn.access: 127.0.0.1:52521 - "GET /openapi.json HTTP/1.1" 200
+2026-05-28 00:19:46,027 INFO uvicorn.access: 127.0.0.1:56546 - "GET /docs HTTP/1.1" 200
+2026-05-28 00:19:46,108 INFO uvicorn.access: 127.0.0.1:56546 - "GET /openapi.json HTTP/1.1" 200
+2026-05-28 00:23:02,934 WARNING uvicorn.error: StatReload detected changes in 'app\api\main.py'. Reloading...
+2026-05-28 00:23:03,023 INFO uvicorn.error: Shutting down
+2026-05-28 00:23:03,134 INFO uvicorn.error: Waiting for application shutdown.
+2026-05-28 00:23:03,135 INFO app.api.main: Заканчиваем работу.
+2026-05-28 00:23:03,135 INFO uvicorn.error: Application shutdown complete.
+2026-05-28 00:23:03,135 INFO uvicorn.error: Finished server process [17320]
+2026-05-28 00:23:05,157 INFO uvicorn.error: Started server process [13788]
+2026-05-28 00:23:05,157 INFO uvicorn.error: Waiting for application startup.
+2026-05-28 00:23:05,157 INFO app.api.main: Запускаем создание БД.
+2026-05-28 00:23:05,158 INFO uvicorn.error: Application startup complete.
+2026-05-28 00:23:19,801 WARNING uvicorn.error: StatReload detected changes in 'app\api\main.py'. Reloading...
+2026-05-28 00:23:19,846 INFO uvicorn.error: Shutting down
+2026-05-28 00:23:19,957 INFO uvicorn.error: Waiting for application shutdown.
+2026-05-28 00:23:19,957 INFO app.api.main: Заканчиваем работу.
+2026-05-28 00:23:19,957 INFO uvicorn.error: Application shutdown complete.
+2026-05-28 00:23:19,958 INFO uvicorn.error: Finished server process [13788]
+2026-05-28 00:23:21,291 INFO uvicorn.error: Started server process [18024]
+2026-05-28 00:23:21,292 INFO uvicorn.error: Waiting for application startup.
+2026-05-28 00:23:21,292 INFO app.api.main: Запускаем создание БД.
+2026-05-28 00:23:21,292 INFO uvicorn.error: Application startup complete.
+2026-05-28 00:23:37,157 INFO uvicorn.error: Shutting down
+2026-05-28 00:23:37,265 INFO uvicorn.error: Waiting for application shutdown.
+2026-05-28 00:23:37,265 INFO app.api.main: Заканчиваем работу.
+2026-05-28 00:23:37,265 INFO uvicorn.error: Application shutdown complete.
+2026-05-28 00:23:37,266 INFO uvicorn.error: Finished server process [18024]
+2026-05-28 00:23:37,470 INFO uvicorn.error: Stopping reloader process [7036]
+2026-05-28 00:23:39,683 INFO uvicorn.error: Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+2026-05-28 00:23:39,684 INFO uvicorn.error: Started reloader process [16884] using StatReload
+2026-05-28 00:23:40,610 INFO uvicorn.error: Started server process [17088]
+2026-05-28 00:23:40,611 INFO uvicorn.error: Waiting for application startup.
+2026-05-28 00:23:40,611 INFO app.api.main: Запускаем создание БД.
+2026-05-28 00:23:40,611 INFO uvicorn.error: Application startup complete.
+2026-05-28 00:34:33,983 INFO uvicorn.error: Shutting down
+2026-05-28 00:34:34,090 INFO uvicorn.error: Waiting for application shutdown.
+2026-05-28 00:34:34,091 INFO app.api.main: Заканчиваем работу.
+2026-05-28 00:34:34,091 INFO uvicorn.error: Application shutdown complete.
+2026-05-28 00:34:34,092 INFO uvicorn.error: Finished server process [17088]
+2026-05-28 00:34:34,313 INFO uvicorn.error: Stopping reloader process [16884]
+2026-05-28 00:34:36,859 INFO uvicorn.error: Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+2026-05-28 00:34:36,859 INFO uvicorn.error: Started reloader process [16592] using StatReload
+2026-05-28 00:34:37,921 INFO uvicorn.error: Started server process [5488]
+2026-05-28 00:34:37,921 INFO uvicorn.error: Waiting for application startup.
+2026-05-28 00:34:37,922 INFO app.api.main: Запускаем создание БД.
+2026-05-28 00:34:37,922 INFO uvicorn.error: Application startup complete.
+2026-05-28 00:44:24,854 WARNING uvicorn.error: StatReload detected changes in 'app\services\delivery.py'. Reloading...
+2026-05-28 00:44:24,959 INFO uvicorn.error: Shutting down
+2026-05-28 00:44:25,068 INFO uvicorn.error: Waiting for application shutdown.
+2026-05-28 00:44:25,068 INFO app.api.main: Заканчиваем работу.
+2026-05-28 00:44:25,068 INFO uvicorn.error: Application shutdown complete.
+2026-05-28 00:44:25,068 INFO uvicorn.error: Finished server process [5488]
+2026-05-28 00:44:26,563 INFO uvicorn.error: Started server process [16636]
+2026-05-28 00:44:26,563 INFO uvicorn.error: Waiting for application startup.
+2026-05-28 00:44:26,564 INFO app.api.main: Запускаем создание БД.
+2026-05-28 00:44:26,564 INFO uvicorn.error: Application startup complete.
+2026-05-28 00:45:06,074 WARNING uvicorn.error: StatReload detected changes in 'app\services\delivery.py'. Reloading...
+2026-05-28 00:45:06,132 INFO uvicorn.error: Shutting down
+2026-05-28 00:45:06,242 INFO uvicorn.error: Waiting for application shutdown.
+2026-05-28 00:45:06,243 INFO app.api.main: Заканчиваем работу.
+2026-05-28 00:45:06,243 INFO uvicorn.error: Application shutdown complete.
+2026-05-28 00:45:06,244 INFO uvicorn.error: Finished server process [16636]
+2026-05-28 00:45:07,688 INFO uvicorn.error: Started server process [17064]
+2026-05-28 00:45:07,689 INFO uvicorn.error: Waiting for application startup.
+2026-05-28 00:45:07,689 INFO app.api.main: Запускаем создание БД.
+2026-05-28 00:45:07,690 INFO uvicorn.error: Application startup complete.
+2026-05-28 00:45:17,829 INFO uvicorn.error: Shutting down
+2026-05-28 00:45:17,938 INFO uvicorn.error: Waiting for application shutdown.
+2026-05-28 00:45:17,939 INFO app.api.main: Заканчиваем работу.
+2026-05-28 00:45:17,939 INFO uvicorn.error: Application shutdown complete.
+2026-05-28 00:45:17,939 INFO uvicorn.error: Finished server process [17064]
+2026-05-28 00:45:18,157 INFO uvicorn.error: Stopping reloader process [16592]
+2026-05-28 00:45:20,387 INFO uvicorn.error: Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+2026-05-28 00:45:20,387 INFO uvicorn.error: Started reloader process [18560] using StatReload
+2026-05-28 00:45:21,454 INFO uvicorn.error: Started server process [18820]
+2026-05-28 00:45:21,454 INFO uvicorn.error: Waiting for application startup.
+2026-05-28 00:45:21,455 INFO app.api.main: Запускаем создание БД.
+2026-05-28 00:45:21,455 INFO uvicorn.error: Application startup complete.
+2026-05-28 00:48:07,893 WARNING uvicorn.error: StatReload detected changes in 'app\services\delivery.py'. Reloading...
+2026-05-28 00:48:07,952 INFO uvicorn.error: Shutting down
+2026-05-28 00:48:08,061 INFO uvicorn.error: Waiting for application shutdown.
+2026-05-28 00:48:08,061 INFO app.api.main: Заканчиваем работу.
+2026-05-28 00:48:08,062 INFO uvicorn.error: Application shutdown complete.
+2026-05-28 00:48:08,062 INFO uvicorn.error: Finished server process [18820]
+2026-05-28 00:48:09,263 INFO uvicorn.error: Started server process [18204]
+2026-05-28 00:48:09,264 INFO uvicorn.error: Waiting for application startup.
+2026-05-28 00:48:09,264 INFO app.api.main: Запускаем создание БД.
+2026-05-28 00:48:09,264 INFO uvicorn.error: Application startup complete.

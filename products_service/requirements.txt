@@ -1,7 +1,8 @@
 fastapi
 uvicorn
 sqlalchemy
+asyncpg
 aiosqlite
+alembic
 greenlet
-httpx
 python-dotenv
