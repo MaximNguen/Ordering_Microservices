@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import datetime
 import logging
 import os
 from logging.handlers import RotatingFileHandler
@@ -33,7 +34,8 @@ def _find_file_handler(logger: logging.Logger, log_file: Path) -> RotatingFileHa
 def _configure_logging() -> None:
     log_dir = Path(os.getenv("LOG_DIR", "logs"))
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / "products_service.log"
+    startup_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"products_service_{startup_time}.log"
 
     log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)

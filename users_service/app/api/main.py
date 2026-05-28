@@ -3,6 +3,7 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from datetime import datetime
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
@@ -35,7 +36,8 @@ def _find_file_handler(logger: logging.Logger, log_file: Path) -> RotatingFileHa
 def _configure_logging() -> None:
     log_dir = Path(os.getenv("LOG_DIR", "logs"))
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / "users_service.log"
+    startup_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"users_service_{startup_time}.log"
 
     log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
@@ -93,4 +95,4 @@ async def auth_error_handler(request: Request, exc: AuthError):
 
 @app.get("/")
 async def root():
-    return {"message": "Сервис доставки работает!"}
+    return {"message": "Сервис пользователей/авторизации работает!"}

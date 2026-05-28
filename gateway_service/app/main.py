@@ -3,6 +3,7 @@ import os
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from datetime import datetime
 
 import httpx
 import jwt
@@ -39,7 +40,8 @@ def _find_file_handler(logger: logging.Logger, log_file: Path) -> RotatingFileHa
 def _configure_logging() -> None:
     log_dir = Path(os.getenv("LOG_DIR", "logs"))
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / "gateway_service.log"
+    startup_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"gateway_service_{startup_time}.log"
 
     log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
