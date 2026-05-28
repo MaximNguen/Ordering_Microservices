@@ -4,6 +4,7 @@ from typing import List
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.order import Order, OrderStatus
 from app.models.orderItem import OrderItem
@@ -22,22 +23,20 @@ class OrderRepository:
         status: OrderStatus | None = None,
     ) -> List[Order]:
         self.logger.info("Получение всех заказов")
-        try:
-            query = select(Order).offset(skip).limit(limit)
-            if user_id is not None:
-                query = query.where(Order.user_id == user_id)
-            if status is not None:
-                query = query.where(Order.status == status)
-            result = await self.db.scalars(query)
-        except Exception as e:
-            self.logger.error(f"Ошибка при получении всех заказов, ошибка: {e}")
-            result = []
+        query = select(Order).offset(skip).limit(limit)
+        if user_id is not None:
+            query = query.where(Order.user_id == user_id)
+        if status is not None:
+            query = query.where(Order.status == status)
+        query = query.options(selectinload(Order.items))
+        result = await self.db.scalars(query)  # ❌ Уберите try/except
         return list(result)
     
     async def get_order_by_id(self, order_id: uuid.UUID) -> Order | None:
         self.logger.info(f"Получение заказа по ID: {order_id}")
         try:
-            result = await self.db.scalar(select(Order).where(Order.order_id == order_id))
+            query = select(Order).where(Order.order_id == order_id).options(selectinload(Order.items))
+            result = await self.db.scalar(query)
         except Exception as e:
             self.logger.error(f"Ошибка при получении заказа по ID {order_id}, ошибка: {e}")
             result = None
@@ -66,14 +65,16 @@ class OrderRepository:
     async def update_order_status(self, order_id: uuid.UUID, new_status: OrderStatus) -> Order | None:
         self.logger.info(f"Обновление статуса заказа (order_id={order_id}, new_status={new_status})")
         try:
-            result = await self.db.execute(
+            await self.db.execute(
                 update(Order)
                 .where(Order.order_id == order_id)
                 .values(status=new_status)
-                .returning(Order)
             )
-            updated_order = result.scalar_one_or_none()
             await self.db.commit()
+            
+            query = select(Order).where(Order.order_id == order_id).options(selectinload(Order.items))
+            updated_order = await self.db.scalar(query)
+            
         except Exception as e:
             self.logger.error(f"Ошибка при обновлении статуса заказа (order_id={order_id}), ошибка: {e}")
             await self.db.rollback()
