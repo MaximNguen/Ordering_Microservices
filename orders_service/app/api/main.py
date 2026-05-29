@@ -17,6 +17,12 @@ if load_dotenv:
 
 from app.core.database import create_db_and_tables
 from app.api.routers import orders
+from app.core.database import create_db_and_tables
+from app.api.routers import orders
+from kafka_service.kafka.producer import kafka_producer
+from kafka_service.kafka.consumer import kafka_consumer
+from kafka_service.config import kafka_config
+from kafka_service.kafka.handlers import register_order_handlers
 
 
 def _find_file_handler(logger: logging.Logger, log_file: Path) -> RotatingFileHandler | None:

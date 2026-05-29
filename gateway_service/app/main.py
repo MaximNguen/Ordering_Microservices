@@ -1,14 +1,19 @@
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import datetime
+from typing import Dict
 
 import httpx
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, Security, status
 from fastapi.security import HTTPBearer
+
+from app.kafka.request_response import kafka_rr
+from kafka_service.kafka.events import EventType
 
 try:
     from dotenv import load_dotenv
@@ -85,6 +90,9 @@ CHECK_USER_STATUS = os.getenv("CHECK_USER_STATUS", "true").lower() == "true"
 INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Token")
 INTERNAL_CALL_TOKEN = os.getenv("INTERNAL_CALL_TOKEN", "")
 
+USE_KAFKA_FOR = os.getenv("USE_KAFKA_FOR", "orders_create,orders_update,deliveries_create,deliveries_update").split(",")
+KAFKA_ENABLED = os.getenv("KAFKA_ENABLED", "true").lower() == "true"
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 HOP_BY_HOP_HEADERS = {"connection", "transfer-encoding", "content-length"}
@@ -92,8 +100,15 @@ HOP_BY_HOP_HEADERS = {"connection", "transfer-encoding", "content-length"}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.http = httpx.AsyncClient(timeout=10.0)
+    if KAFKA_ENABLED:
+        await kafka_rr.start()
+        logger.info("Kafka request-response system started.")
+    
     yield
     await app.state.http.aclose()
+    if KAFKA_ENABLED:
+        await kafka_rr.stop()
+        logger.info("Kafka request-response system stopped.")
 
 app = FastAPI(title="API Gateway", lifespan=lifespan, openapi_tags=tags_metadata)
 
@@ -157,7 +172,43 @@ async def require_access_token(request: Request) -> dict:
 
     await _check_user_status(request, token)
     return payload
+
+def should_use_kafka_for(path: str, method: str) -> bool:
+    """Определяем, нужно ли использовать Kafka для данного запроса"""
+    if not KAFKA_ENABLED:
+        return False
     
+    key = f"{method.lower()}_{path.strip('/').replace('/', '_')}"
+    return key in USE_KAFKA_FOR
+
+async def _proxy_via_kafka(request: Request, topic: str, event_type: str, data: Dict) -> Response:
+    """Проксирование через Kafka с ожиданием ответа"""
+    try:
+        response_data = await kafka_rr.request(
+            topic=topic,
+            event_type=event_type,
+            data=data,
+            timeout=30.0
+        )
+        
+        return Response(
+            content=json.dumps(response_data.get("data", {})),
+            status_code=response_data.get("status_code", 200),
+            media_type="application/json",
+        )
+    except TimeoutError:
+        return Response(
+            content=json.dumps({"detail": "Service timeout"}),
+            status_code=504,
+            media_type="application/json",
+        )
+    except Exception as e:
+        logger.error(f"Kafka proxy error: {e}")
+        return Response(
+            content=json.dumps({"detail": f"Internal gateway error: {str(e)}"}),
+            status_code=502,
+            media_type="application/json",
+        )
 
 async def _proxy_request(request: Request, base_url: str) -> Response:
     raw_query = request.scope.get("query_string", b"")
@@ -200,9 +251,28 @@ async def users_proxy(request: Request):
     dependencies=[Security(bearer_scheme), Depends(require_access_token)],
     tags=["deliveries"],
 )
-async def deliveries_proxy(request: Request):
-    return await _proxy_request(request, DELIVERY_SERVICE_URL)
 
+async def deliveries_proxy(request: Request):
+    if request.method == "GET":
+        return await _proxy_request(request, DELIVERY_SERVICE_URL)
+    
+    path = request.url.path
+    method = request.method
+    
+    if should_use_kafka_for(path, method):
+        body = await request.body()
+        data = json.loads(body) if body else {}
+        
+        if method == "POST" and path.strip("/") == "deliveries":
+            event_type = EventType.DELIVERY_CREATE.value
+            return await _proxy_via_kafka(request, topic="deliveries", event_type=event_type, data=data)
+        elif method in ("PUT", "PATCH") and "/deliveries/" in path:
+            delivery_id = path.strip("/").split("/")[-1]
+            data["delivery_id"] = delivery_id
+            event_type = EventType.DELIVERY_UPDATE.value
+            return await _proxy_via_kafka(request, topic="deliveries", event_type=event_type, data=data)
+    
+    return await _proxy_request(request, DELIVERY_SERVICE_URL)
 
 @app.api_route(
     "/orders",
@@ -216,9 +286,28 @@ async def deliveries_proxy(request: Request):
     dependencies=[Security(bearer_scheme), Depends(require_access_token)],
     tags=["orders"],
 )
-async def orders_proxy(request: Request):
-    return await _proxy_request(request, ORDERS_SERVICE_URL)
 
+async def orders_proxy(request: Request):
+    if request.method == "GET":
+        return await _proxy_request(request, ORDERS_SERVICE_URL)
+    
+    path = request.url.path
+    method = request.method
+    
+    if should_use_kafka_for(path, method):
+        body = await request.body()
+        data = json.loads(body) if body else {}
+        
+        if method == "POST" and path == "/orders":
+            event_type = EventType.ORDER_CREATED.value
+            return await _proxy_via_kafka(request, "order.events", event_type, data)
+        elif method == "PUT" and "/orders/" in path:
+            order_id = path.split("/")[-1]
+            data["order_id"] = order_id
+            event_type = EventType.ORDER_UPDATED.value
+            return await _proxy_via_kafka(request, "order.events", event_type, data)
+    
+    return await _proxy_request(request, ORDERS_SERVICE_URL)
 
 @app.api_route(
     "/products",
