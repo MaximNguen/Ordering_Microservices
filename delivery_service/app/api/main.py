@@ -1,11 +1,21 @@
 from contextlib import asynccontextmanager
 import logging
 import os
+import json
+import asyncio
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import datetime
 
 from fastapi import FastAPI
+from aiokafka import AIOKafkaConsumer
+
+from app.core.database import create_db_and_tables
+from app.api.routers import delivery
+from app.kafka.handlers import DeliveryKafkaHandlers
+from app.repositories.delivery import DeliveryRepository
+from app.core.database import AsyncSessionLocal
+from app.services.delivery import DeliveryService
 
 try:
     from dotenv import load_dotenv
@@ -69,11 +79,79 @@ def _configure_logging() -> None:
 _configure_logging()
 logger = logging.getLogger(__name__)
 
+kafka_handlers: DeliveryKafkaHandlers | None = None
+kafka_consumer: AIOKafkaConsumer | None = None
+consume_task: asyncio.Task | None = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # await create_db_and_tables()
-    logger.info("Запускаем создание БД.")
-    yield
+    async with AsyncSessionLocal() as session:
+        delivery_repo = DeliveryRepository(session)
+        delivery_service = DeliveryService(delivery_repo)
+        
+        kafka_handlers = DeliveryKafkaHandlers(delivery_service)
+        await kafka_handlers.start_producer()
+        
+        bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+        
+        kafka_consumer = AIOKafkaConsumer(
+            "delivery.events",
+            bootstrap_servers=bootstrap_servers,
+            group_id="delivery-service-group",
+            auto_offset_reset="earliest",
+            enable_auto_commit=True,
+            value_deserializer=lambda v: json.loads(v.decode('utf-8')) if v else None
+        )
+        await kafka_consumer.start()
+        logger.info(f"Delivery Kafka consumer started on topic 'delivery.events'")
+        
+        async def consume_loop():
+            try:
+                async for msg in kafka_consumer:
+                    try:
+                        event = msg.value
+                        if not event:
+                            continue
+                            
+                        event_type = event.get("event_type")
+                        logger.info(f"Received event: {event_type}")
+                        
+                        if event_type == "delivery.created":
+                            await kafka_handlers.handle_delivery_created(event)
+                        elif event_type == "delivery.updated":
+                            await kafka_handlers.handle_delivery_updated(event)
+                        else:
+                            logger.warning(f"Unknown event type: {event_type}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error processing message: {e}", exc_info=True)
+                        
+            except asyncio.CancelledError:
+                logger.info("Consumer loop cancelled")
+            except Exception as e:
+                logger.error(f"Consumer loop error: {e}", exc_info=True)
+            finally:
+                logger.info("Consumer loop finished")
+        
+        consume_task = asyncio.create_task(consume_loop())
+    
+        yield
+        
+        if consume_task:
+            consume_task.cancel()
+            try:
+                await consume_task
+            except asyncio.CancelledError:
+                pass
+                    
+        if kafka_consumer:
+            await kafka_consumer.stop()
+            logger.info("Kafka consumer stopped")
+                
+        if kafka_handlers:
+            await kafka_handlers.stop_producer()
+            logger.info("Kafka producer stopped")
     logger.info("Заканчиваем работу.")
     
 app = FastAPI(
