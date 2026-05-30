@@ -6,9 +6,10 @@ import asyncio
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 from fastapi import FastAPI
-from aiokafka import AIOKafkaConsumer
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 
 from app.core.database import create_db_and_tables
 from app.api.routers import delivery
@@ -79,9 +80,10 @@ def _configure_logging() -> None:
 _configure_logging()
 logger = logging.getLogger(__name__)
 
-kafka_handlers: DeliveryKafkaHandlers | None = None
-kafka_consumer: AIOKafkaConsumer | None = None
-consume_task: asyncio.Task | None = None
+kafka_handlers: Optional[DeliveryKafkaHandlers] = None
+kafka_consumer: Optional[AIOKafkaConsumer] = None
+kafka_producer: Optional[AIOKafkaProducer] = None
+consume_task: Optional[asyncio.Task] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -134,24 +136,24 @@ async def lifespan(app: FastAPI):
             finally:
                 logger.info("Consumer loop finished")
         
-        consume_task = asyncio.create_task(consume_loop())
+    consume_task = asyncio.create_task(consume_loop())
     
-        yield
+    yield
         
-        if consume_task:
-            consume_task.cancel()
-            try:
-                await consume_task
-            except asyncio.CancelledError:
-                pass
+    if consume_task:
+        consume_task.cancel()
+        try:
+            await consume_task
+        except asyncio.CancelledError:
+            pass
                     
-        if kafka_consumer:
-            await kafka_consumer.stop()
-            logger.info("Kafka consumer stopped")
+    if kafka_consumer:
+        await kafka_consumer.stop()
+        logger.info("Kafka consumer stopped")
                 
-        if kafka_handlers:
-            await kafka_handlers.stop_producer()
-            logger.info("Kafka producer stopped")
+    if kafka_handlers:
+        await kafka_handlers.stop_producer()
+        logger.info("Kafka producer stopped")
     logger.info("Заканчиваем работу.")
     
 app = FastAPI(

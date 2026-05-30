@@ -102,9 +102,9 @@ async def lifespan(app: FastAPI):
                 event = msg.value
                 event_type = event.get("event_type")
                 
-                if event_type == "order.created":
+                if event_type == "orders.created":
                     await kafka_handlers.handle_order_created(event)
-                elif event_type == "order.updated":
+                elif event_type == "orders.updated":
                     await kafka_handlers.handle_order_updated(event)
                 else:
                     logger.warning(f"Unknown event type: {event_type}")
