@@ -55,7 +55,12 @@ class OrderRepository:
             order.items = items
             self.db.add(order)
             await self.db.commit()
-            await self.db.refresh(order)
+            
+            query = select(Order).where(Order.order_id == order.order_id).options(
+            selectinload(Order.items)
+            )
+            result = await self.db.execute(query)
+            order = result.scalar_one()
         except Exception as e:
             self.logger.error(f"Ошибка при создании заказа, ошибка: {e}")
             await self.db.rollback()
