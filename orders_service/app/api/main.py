@@ -20,7 +20,9 @@ if load_dotenv:
 
 from app.core.database import create_db_and_tables
 from app.api.routers import orders
-from app.core.dependencies import get_order_service
+from app.core.database import AsyncSessionLocal
+from app.repositories.orders import OrderRepository
+from app.services.orders import OrderService
 from app.kafka.handlers import OrderKafkaHandlers
 
 
@@ -82,46 +84,50 @@ kafka_consumer = None
 async def lifespan(app: FastAPI):
     # await create_db_and_tables()
     logger.info("Starting database initialization.")
-    order_service = get_order_service()
-    kafka_handlers = OrderKafkaHandlers(order_service)
-    await kafka_handlers.start_producer()
-    
-    kafka_consumer = AIOKafkaConsumer(
-        "orders.events",
-        bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
-        group_id="orders-service-group",
-        auto_offset_reset="earliest",
-        value_deserializer=lambda v: json.loads(v.decode('utf-8')) if v else None
-    )
-    await kafka_consumer.start()
-    logger.info("Kafka consumer started for orders service.")
-    
-    async def consume_loop():
-        async for msg in kafka_consumer:
-            try:
-                event = msg.value
-                event_type = event.get("event_type")
-                
-                if event_type == "orders.created":
-                    await kafka_handlers.handle_order_created(event)
-                elif event_type == "orders.updated":
-                    await kafka_handlers.handle_order_updated(event)
-                else:
-                    logger.warning(f"Unknown event type: {event_type}")
-                    
-            except Exception as e:
-                logger.error(f"Error processing message: {e}")
-    
-    app.state.consume_task = asyncio.create_task(consume_loop())
+    async with AsyncSessionLocal() as session:
+        order_repo = OrderRepository(db=session)
+        order_service = OrderService(order_repo=order_repo)
+        kafka_handlers = OrderKafkaHandlers(order_service)
+        await kafka_handlers.start_producer()
 
-    yield
-    
-    if kafka_consumer:
+        kafka_consumer = AIOKafkaConsumer(
+            "order.events",
+            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+            group_id="orders-service-group",
+            auto_offset_reset="earliest",
+            value_deserializer=lambda v: json.loads(v.decode("utf-8")) if v else None,
+        )
+        await kafka_consumer.start()
+        logger.info("Kafka consumer started for orders service.")
+
+        async def consume_loop():
+            async for msg in kafka_consumer:
+                try:
+                    event = msg.value
+                    event_type = event.get("event_type")
+
+                    if event_type == "order.created":
+                        await kafka_handlers.handle_order_created(event)
+                    elif event_type == "order.status.changed":
+                        await kafka_handlers.handle_order_updated(event)
+                    else:
+                        logger.warning(f"Unknown event type: {event_type}")
+
+                except Exception as e:
+                    logger.error(f"Error processing message: {e}")
+
+        app.state.consume_task = asyncio.create_task(consume_loop())
+
+        yield
+
+        if hasattr(app.state, "consume_task"):
+            app.state.consume_task.cancel()
+            try:
+                await app.state.consume_task
+            except asyncio.CancelledError:
+                pass
         await kafka_consumer.stop()
-    if kafka_handlers:
         await kafka_handlers.stop_producer()
-    if hasattr(app.state, 'consume_task'):
-        app.state.consume_task.cancel()
     logger.info("Shutting down.")
 
 

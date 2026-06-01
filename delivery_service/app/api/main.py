@@ -135,25 +135,25 @@ async def lifespan(app: FastAPI):
                 logger.error(f"Consumer loop error: {e}", exc_info=True)
             finally:
                 logger.info("Consumer loop finished")
-        
-    consume_task = asyncio.create_task(consume_loop())
-    
-    yield
-        
-    if consume_task:
-        consume_task.cancel()
-        try:
-            await consume_task
-        except asyncio.CancelledError:
-            pass
-                    
-    if kafka_consumer:
-        await kafka_consumer.stop()
-        logger.info("Kafka consumer stopped")
-                
-    if kafka_handlers:
-        await kafka_handlers.stop_producer()
-        logger.info("Kafka producer stopped")
+
+        consume_task = asyncio.create_task(consume_loop())
+
+        yield
+
+        if consume_task:
+            consume_task.cancel()
+            try:
+                await consume_task
+            except asyncio.CancelledError:
+                pass
+
+        if kafka_consumer:
+            await kafka_consumer.stop()
+            logger.info("Kafka consumer stopped")
+
+        if kafka_handlers:
+            await kafka_handlers.stop_producer()
+            logger.info("Kafka producer stopped")
     logger.info("Заканчиваем работу.")
     
 app = FastAPI(

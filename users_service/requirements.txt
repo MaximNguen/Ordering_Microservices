@@ -7,3 +7,4 @@ alembic
 greenlet
 python-dotenv
 PyJWT
+passlib[bcrypt]

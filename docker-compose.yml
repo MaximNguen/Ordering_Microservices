@@ -1,0 +1,150 @@
+services:
+  kafka:
+    image: bitnami/kafka:3.7
+    environment:
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=broker,controller
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    ports:
+      - "9092:9092"
+
+  users-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=users_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - users_db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  delivery-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=delivery_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - delivery_db_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  orders-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=orders_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - orders_db_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+
+  products-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=products_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - products_db_data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+
+  users-service:
+    build:
+      context: .
+      dockerfile: users_service/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@users-db:5432/users_db
+      - SECRET_KEY=changeme
+      - ALGORITHM=HS256
+      - INTERNAL_CALL_HEADER=X-Internal-Token
+      - INTERNAL_CALL_TOKEN=internal-token
+    depends_on:
+      - users-db
+    ports:
+      - "8000:8000"
+
+  delivery-service:
+    build:
+      context: .
+      dockerfile: delivery_service/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@delivery-db:5432/delivery_db
+      - GATEWAY_URL=http://gateway-service:8004
+      - INTERNAL_CALL_HEADER=X-Internal-Token
+      - INTERNAL_CALL_TOKEN=internal-token
+      - SECRET_KEY=changeme
+      - ALGORITHM=HS256
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      - delivery-db
+      - kafka
+    ports:
+      - "8001:8001"
+
+  orders-service:
+    build:
+      context: .
+      dockerfile: orders_service/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@orders-db:5432/orders_db
+      - GATEWAY_URL=http://gateway-service:8004
+      - INTERNAL_CALL_HEADER=X-Internal-Token
+      - INTERNAL_CALL_TOKEN=internal-token
+      - SECRET_KEY=changeme
+      - ALGORITHM=HS256
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      - orders-db
+      - kafka
+    ports:
+      - "8002:8002"
+
+  products-service:
+    build:
+      context: .
+      dockerfile: products_service/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@products-db:5432/products_db
+      - INTERNAL_CALL_HEADER=X-Internal-Token
+      - INTERNAL_CALL_TOKEN=internal-token
+      - SECRET_KEY=changeme
+      - ALGORITHM=HS256
+    depends_on:
+      - products-db
+    ports:
+      - "8003:8003"
+
+  gateway-service:
+    build:
+      context: .
+      dockerfile: gateway_service/Dockerfile
+    environment:
+      - USERS_SERVICE_URL=http://users-service:8000
+      - DELIVERY_SERVICE_URL=http://delivery-service:8001
+      - ORDERS_SERVICE_URL=http://orders-service:8002
+      - PRODUCTS_SERVICE_URL=http://products-service:8003
+      - SECRET_KEY=changeme
+      - ALGORITHM=HS256
+      - INTERNAL_CALL_HEADER=X-Internal-Token
+      - INTERNAL_CALL_TOKEN=internal-token
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_ENABLED=true
+    depends_on:
+      - users-service
+      - kafka
+    ports:
+      - "8004:8004"
+
+volumes:
+  users_db_data:
+  delivery_db_data:
+  orders_db_data:
+  products_db_data:

@@ -1,6 +1,7 @@
 # delivery_service/app/kafka/handlers.py
 import json
 import logging
+import os
 import uuid
 from typing import Any, Dict
 
@@ -20,8 +21,8 @@ class DeliveryKafkaHandlers:
         
     async def start_producer(self):
         self.producer = AIOKafkaProducer(
-            bootstrap_servers="localhost:9092",
-            value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8')
+            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+            value_serializer=lambda v: json.dumps(v, default=str).encode("utf-8"),
         )
         await self.producer.start()
         
@@ -61,12 +62,12 @@ class DeliveryKafkaHandlers:
                 }
                 
             if self.producer and response_topic:
-                await self.producer.send(response_topic, value=response)
+                    await self.producer.send_and_wait(response_topic, value=response)
                 
         except Exception as e:
             logger.error(f"Error handling delivery created: {e}")
             if self.producer and response_topic:
-                await self.producer.send(response_topic, value={
+                    await self.producer.send_and_wait(response_topic, value={
                     "correlation_id": correlation_id,
                     "status_code": 500,
                     "data": {"detail": str(e)},

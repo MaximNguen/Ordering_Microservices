@@ -1,5 +1,7 @@
 import json
 import logging
+import os
+import uuid
 from typing import Any, Dict
 
 from aiokafka import AIOKafkaProducer
@@ -19,8 +21,8 @@ class OrderKafkaHandler:
     async def start_producer(self):
         """Запуск producer для ответов"""
         self.producer = AIOKafkaProducer(
-            bootstrap_servers="localhost:9092",
-            value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8')
+            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+            value_serializer=lambda v: json.dumps(v, default=str).encode("utf-8"),
         )
         await self.producer.start()
         
@@ -79,8 +81,11 @@ class OrderKafkaHandler:
         
         try:
             order_id = data.get("order_id")
-            new_status = data.get("status")
-            
+            new_status = data.get("new_status") or data.get("status")
+            if not order_id or not new_status:
+                raise ValueError("order_id and new_status are required")
+
+            order_id = uuid.UUID(str(order_id))
             order_update = OrderUpdateStatusSchema(new_status=OrderStatus(new_status))
             result = await self.order_service.update_order_status(order_id, order_update)
             
@@ -112,3 +117,7 @@ class OrderKafkaHandler:
                     "data": {"detail": str(e)},
                     "success": False
                 })
+
+
+# Backward-compatible alias for imports using pluralized class name.
+OrderKafkaHandlers = OrderKafkaHandler

@@ -1,7 +1,10 @@
 fastapi
 uvicorn
 sqlalchemy
+asyncpg
 aiosqlite
 greenlet
 httpx
 python-dotenv
+PyJWT
+aiokafka

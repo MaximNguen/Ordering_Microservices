@@ -90,7 +90,14 @@ CHECK_USER_STATUS = os.getenv("CHECK_USER_STATUS", "true").lower() == "true"
 INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Token")
 INTERNAL_CALL_TOKEN = os.getenv("INTERNAL_CALL_TOKEN", "")
 
-USE_KAFKA_FOR = os.getenv("USE_KAFKA_FOR", "orders_create,orders_update,deliveries_create,deliveries_update").split(",")
+USE_KAFKA_FOR = {
+    item.strip()
+    for item in os.getenv(
+        "USE_KAFKA_FOR",
+        "orders_create,orders_update,deliveries_create,deliveries_update",
+    ).split(",")
+    if item.strip()
+}
 KAFKA_ENABLED = os.getenv("KAFKA_ENABLED", "true").lower() == "true"
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -177,9 +184,21 @@ def should_use_kafka_for(path: str, method: str) -> bool:
     """Определяем, нужно ли использовать Kafka для данного запроса"""
     if not KAFKA_ENABLED:
         return False
-    
-    key = f"{method.lower()}_{path.strip('/').replace('/', '_')}"
-    return key in USE_KAFKA_FOR
+
+    normalized_path = path.strip("/")
+    path_key = f"{method.lower()}_{normalized_path.replace('/', '_')}"
+    candidates = {path_key}
+
+    parts = [segment for segment in normalized_path.split("/") if segment]
+    if parts:
+        resource = parts[0]
+        has_resource_id = len(parts) > 1
+        if method.upper() == "POST" and not has_resource_id:
+            candidates.add(f"{resource}_create")
+        elif method.upper() in {"PUT", "PATCH"} and has_resource_id:
+            candidates.add(f"{resource}_update")
+
+    return bool(candidates & USE_KAFKA_FOR)
 
 async def _proxy_via_kafka(request: Request, topic: str, event_type: str, data: Dict) -> Response:
     """Проксирование через Kafka с ожиданием ответа"""
@@ -265,12 +284,12 @@ async def deliveries_proxy(request: Request):
         
         if method == "POST" and path.strip("/") == "deliveries":
             event_type = EventType.DELIVERY_CREATE.value
-            return await _proxy_via_kafka(request, topic="deliveries", event_type=event_type, data=data)
+            return await _proxy_via_kafka(request, topic="delivery.events", event_type=event_type, data=data)
         elif method in ("PUT", "PATCH") and "/deliveries/" in path:
             delivery_id = path.strip("/").split("/")[-1]
             data["delivery_id"] = delivery_id
-            event_type = EventType.DELIVERY_UPDATE.value
-            return await _proxy_via_kafka(request, topic="deliveries", event_type=event_type, data=data)
+            event_type = EventType.DELIVERY_UPDATED.value
+            return await _proxy_via_kafka(request, topic="delivery.events", event_type=event_type, data=data)
     
     return await _proxy_request(request, DELIVERY_SERVICE_URL)
 
@@ -301,10 +320,10 @@ async def orders_proxy(request: Request):
         if method == "POST" and path == "/orders":
             event_type = EventType.ORDER_CREATED.value
             return await _proxy_via_kafka(request, "order.events", event_type, data)
-        elif method == "PUT" and "/orders/" in path:
+        elif method in ("PUT", "PATCH") and "/orders/" in path:
             order_id = path.split("/")[-1]
             data["order_id"] = order_id
-            event_type = EventType.ORDER_UPDATED.value
+            event_type = EventType.ORDER_STATUS_CHANGED.value
             return await _proxy_via_kafka(request, "order.events", event_type, data)
     
     return await _proxy_request(request, ORDERS_SERVICE_URL)

@@ -1,13 +1,12 @@
 import asyncio
 import json
+import os
 import uuid
 from typing import Any, Dict, Optional
 from datetime import datetime
 
 from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
 import logging
-
-from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,7 @@ class KafkaRequestResponse:
         
     async def start(self):
         """Запуск producer и consumer для ответов"""
-        bootstrap_servers = "localhost:9092"
+        bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
         
         self.producer = AIOKafkaProducer(
             bootstrap_servers=bootstrap_servers,
@@ -88,7 +87,7 @@ class KafkaRequestResponse:
                 "data": data
             }
             
-            await self.producer.send(topic, value=event)
+            await self.producer.send_and_wait(topic, value=event)
             logger.info(f"Sent request {correlation_id} to {topic}")
             
             response = await asyncio.wait_for(future, timeout=timeout)

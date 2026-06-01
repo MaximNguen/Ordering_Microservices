@@ -1,18 +1,57 @@
 import uuid
+import os
 
-from fastapi import APIRouter, Depends, HTTPException, Security, status
-from fastapi.security import HTTPBearer
+from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import jwt
 
 from app.core.dependencies import get_product_service
 from app.schemas.product import ProductCreate, ProductResponse, ProductUpdate
 from app.services.products import ProductService
 
 bearer_scheme = HTTPBearer(auto_error=False)
+INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Token")
+INTERNAL_CALL_TOKEN = os.getenv("INTERNAL_CALL_TOKEN", "")
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+
+
+def require_service_auth(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
+) -> None:
+    if INTERNAL_CALL_TOKEN and request.headers.get(INTERNAL_CALL_HEADER) == INTERNAL_CALL_TOKEN:
+        return
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not SECRET_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Auth is not configured",
+        )
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("token_type") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 router = APIRouter(
     prefix="/products",
     tags=["products"],
-    dependencies=[Security(bearer_scheme)],
+    dependencies=[Depends(require_service_auth)],
 )
 
 
