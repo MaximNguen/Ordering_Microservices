@@ -1,0 +1,176 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=2181
+      - ZOOKEEPER_TICK_TIME=2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  users-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=users_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - users_db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  delivery-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=delivery_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - delivery_db_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  orders-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=orders_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - orders_db_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+
+  products-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=products_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - products_db_data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+
+  users-service:
+    build:
+      context: .
+      dockerfile: users_service/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@users-db:5432/users_db
+      - SECRET_KEY=changeme
+      - ALGORITHM=HS256
+      - INTERNAL_CALL_HEADER=X-Internal-Token
+      - INTERNAL_CALL_TOKEN=internal-token
+    depends_on:
+      - users-db
+    ports:
+      - "8000:8000"
+
+  delivery-service:
+    build:
+      context: .
+      dockerfile: delivery_service/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@delivery-db:5432/delivery_db
+      - GATEWAY_URL=http://gateway-service:8004
+      - INTERNAL_CALL_HEADER=X-Internal-Token
+      - INTERNAL_CALL_TOKEN=internal-token
+      - SECRET_KEY=changeme
+      - ALGORITHM=HS256
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      delivery-db:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+    restart: on-failure
+
+  orders-service:
+    build:
+      context: .
+      dockerfile: orders_service/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@orders-db:5432/orders_db
+      - GATEWAY_URL=http://gateway-service:8004
+      - INTERNAL_CALL_HEADER=X-Internal-Token
+      - INTERNAL_CALL_TOKEN=internal-token
+      - SECRET_KEY=changeme
+      - ALGORITHM=HS256
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      orders-db:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8002:8002"
+    restart: on-failure
+
+  products-service:
+    build:
+      context: .
+      dockerfile: products_service/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@products-db:5432/products_db
+      - INTERNAL_CALL_HEADER=X-Internal-Token
+      - INTERNAL_CALL_TOKEN=internal-token
+      - SECRET_KEY=changeme
+      - ALGORITHM=HS256
+    depends_on:
+      - products-db
+    ports:
+      - "8003:8003"
+
+  gateway-service:
+    build:
+      context: .
+      dockerfile: gateway_service/Dockerfile
+    environment:
+      - USERS_SERVICE_URL=http://users-service:8000
+      - DELIVERY_SERVICE_URL=http://delivery-service:8001
+      - ORDERS_SERVICE_URL=http://orders-service:8002
+      - PRODUCTS_SERVICE_URL=http://products-service:8003
+      - SECRET_KEY=changeme
+      - ALGORITHM=HS256
+      - INTERNAL_CALL_HEADER=X-Internal-Token
+      - INTERNAL_CALL_TOKEN=internal-token
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_ENABLED=true
+    depends_on:
+      users-service:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8004:8004"
+    restart: on-failure
+
+volumes:
+  users_db_data:
+  delivery_db_data:
+  orders_db_data:
+  products_db_data:
