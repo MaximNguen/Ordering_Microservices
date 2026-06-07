@@ -261,6 +261,7 @@ async def _proxy_request(request: Request, base_url: str) -> Response:
 
 @app.api_route("/users", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], tags=["users"])
 @app.api_route("/users/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], tags=["users"])
+@limiter.limit("100/minute")
 async def users_proxy(request: Request):
     return await _proxy_request(request, USERS_SERVICE_URL)
 
@@ -277,6 +278,7 @@ async def users_proxy(request: Request):
     dependencies=[Security(bearer_scheme), Depends(require_access_token)],
     tags=["deliveries"],
 )
+@limiter.limit("100/minute")
 
 async def deliveries_proxy(request: Request):
     if request.method == "GET":
@@ -312,6 +314,7 @@ async def deliveries_proxy(request: Request):
     dependencies=[Security(bearer_scheme), Depends(require_access_token)],
     tags=["orders"],
 )
+@limiter.limit("100/minute")
 
 async def orders_proxy(request: Request):
     if request.method == "GET":
@@ -341,16 +344,19 @@ async def orders_proxy(request: Request):
     dependencies=[Security(bearer_scheme), Depends(require_access_token)],
     tags=["products"],
 )
+@limiter.limit("100/minute")
 @app.api_route(
     "/products/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     dependencies=[Security(bearer_scheme), Depends(require_access_token)],
     tags=["products"],
 )
+@limiter.limit("100/minute")
 async def products_proxy(request: Request):
     return await _proxy_request(request, PRODUCTS_SERVICE_URL)
 
 
 @app.get("/")
+@limiter.limit("100/minute")
 async def root():
     return {"message": "Gateway работает"}

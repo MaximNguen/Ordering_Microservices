@@ -4,11 +4,14 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.core.dependencies import get_product_service
 from app.schemas.product import ProductCreate, ProductResponse, ProductUpdate
 from app.services.products import ProductService
 
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 bearer_scheme = HTTPBearer(auto_error=False)
 INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Token")
 INTERNAL_CALL_TOKEN = os.getenv("INTERNAL_CALL_TOKEN", "")
@@ -56,6 +59,7 @@ router = APIRouter(
 
 
 @router.get("/", response_model=list[ProductResponse], status_code=status.HTTP_200_OK)
+@limiter.limit("10/minute")
 async def get_all_products(
     skip: int = 0,
     limit: int = 100,
@@ -69,6 +73,7 @@ async def get_all_products(
 
 
 @router.post("/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 async def create_product(
     product_create: ProductCreate,
     product_service: ProductService = Depends(get_product_service),
@@ -81,6 +86,7 @@ async def create_product(
 
 
 @router.get("/{product_id}", response_model=ProductResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("10/minute")
 async def get_product(
     product_id: uuid.UUID,
     product_service: ProductService = Depends(get_product_service),
@@ -93,6 +99,7 @@ async def get_product(
 
 
 @router.put("/{product_id}", response_model=ProductResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("10/minute")
 async def update_product(
     product_id: uuid.UUID,
     product_update: ProductUpdate,
@@ -106,6 +113,7 @@ async def update_product(
 
 
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("10/minute")
 async def delete_product(
     product_id: uuid.UUID,
     product_service: ProductService = Depends(get_product_service),
