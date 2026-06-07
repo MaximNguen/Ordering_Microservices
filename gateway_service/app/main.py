@@ -14,6 +14,9 @@ from fastapi.security import HTTPBearer
 
 from app.kafka.request_response import kafka_rr
 from kafka_service.kafka.events import EventType
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 try:
     from dotenv import load_dotenv
@@ -103,9 +106,13 @@ KAFKA_ENABLED = os.getenv("KAFKA_ENABLED", "true").lower() == "true"
 bearer_scheme = HTTPBearer(auto_error=False)
 
 HOP_BY_HOP_HEADERS = {"connection", "transfer-encoding", "content-length"}
+    
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.state.http = httpx.AsyncClient(timeout=10.0)
     if KAFKA_ENABLED:
         await kafka_rr.start()

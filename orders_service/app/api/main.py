@@ -7,8 +7,9 @@ from pathlib import Path
 from datetime import datetime
 
 from fastapi import FastAPI
-from aiokafka import AIOKafkaConsumer
-import json
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from redis import EventType
 
@@ -86,10 +87,13 @@ kafka_handlers = None
 kafka_consumer = None
 cache_listener = CacheInvalidationListener()
 
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting database initialization.")
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     await init_redis()
     cache_listener.start()
     

@@ -10,6 +10,9 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from app.core.database import create_db_and_tables
 from app.api.routers.delivery import require_service_auth
@@ -91,8 +94,13 @@ kafka_producer: Optional[AIOKafkaProducer] = None
 consume_task: Optional[asyncio.Task] = None
 cache_listener = CacheInvalidationListener()
 
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    
     await init_redis()
     cache_listener.start()
     await kafka_producer.start()
