@@ -3,6 +3,7 @@ import logging
 from typing import Any, Optional, Callable, Awaitable
 import redis.asyncio as redis
 from cache_settings.redis_client import get_redis
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ class CacheManager:
                 "event_type": event_type,
                 "data": data,
                 "service": self.prefix,
-                "timestamp": str(__import__('datetime').datetime.now())
+                "timestamp": datetime.now().isoformat()
             }
             await redis_client.publish(
                 "cache:invalidation",
@@ -106,6 +107,7 @@ product_cache = CacheManager(prefix="product")
 class OrderCacheKeys:
     ORDER_BY_ID = "order:{order_id}"
     ALL_ORDERS = "all_orders:skip:{skip}:limit:{limit}"
+    USER_ORDERS = "user:{user_id}:orders"
     
 class DeliveryCacheKeys:
     DELIVERY_BY_ID = "delivery:{delivery_id}"

@@ -24,6 +24,8 @@ from app.core.database import AsyncSessionLocal
 from app.repositories.orders import OrderRepository
 from app.services.orders import OrderService
 from app.kafka.handlers import OrderKafkaHandlers
+from app.core.cache_listener import CacheInvalidationListener
+from cache_settings.redis_client import init_redis, close_redis
 
 
 def _find_file_handler(logger: logging.Logger, log_file: Path) -> RotatingFileHandler | None:
@@ -78,13 +80,15 @@ logger = logging.getLogger(__name__)
 
 kafka_handlers = None
 kafka_consumer = None
+cache_listener = CacheInvalidationListener()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # await create_db_and_tables()
     logger.info("Starting database initialization.")
     async with AsyncSessionLocal() as session:
+        await init_redis()
+        cache_listener.start()
         order_repo = OrderRepository(db=session)
         order_service = OrderService(order_repo=order_repo)
         kafka_handlers = OrderKafkaHandlers(order_service)
@@ -128,6 +132,8 @@ async def lifespan(app: FastAPI):
                 pass
         await kafka_consumer.stop()
         await kafka_handlers.stop_producer()
+        await cache_listener.stop()
+        await close_redis()
     logger.info("Shutting down.")
 
 
