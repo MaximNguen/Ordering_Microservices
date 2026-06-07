@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Union
 from aiokafka import AIOKafkaProducer
 from aiokafka.errors import KafkaError
 
-from kafka.events import BaseEvent, event_from_dict
+from .events import BaseEvent, event_from_dict
 from kafka_service.config import kafka_config
 
 logger = logging.getLogger(__name__)
@@ -32,9 +32,7 @@ class KafkaProducerManager:
                 bootstrap_servers=self.bootstrap_servers,
                 value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8'),
                 key_serializer=lambda k: k.encode('utf-8') if k else None,
-                acks=kafka_config.KAFKA_ACKS,
-                retries=kafka_config.KAFKA_RETRIES,
-                max_in_flight_requests_per_connection=kafka_config.KAFKA_MAX_IN_FLIGHT,
+                acks=kafka_config.KAFKA_ACKS
             )
             await self.producer.start()
             self._started = True

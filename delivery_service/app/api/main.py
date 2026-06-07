@@ -89,8 +89,6 @@ _configure_logging()
 logger = logging.getLogger(__name__)
 
 kafka_handlers: Optional[DeliveryKafkaHandlers] = None
-kafka_consumer: Optional[AIOKafkaConsumer] = None
-kafka_producer: Optional[AIOKafkaProducer] = None
 consume_task: Optional[asyncio.Task] = None
 cache_listener = CacheInvalidationListener()
 

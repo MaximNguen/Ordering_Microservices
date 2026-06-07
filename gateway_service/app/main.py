@@ -357,6 +357,5 @@ async def products_proxy(request: Request):
 
 
 @app.get("/")
-@limiter.limit("100/minute")
 async def root():
     return {"message": "Gateway работает"}

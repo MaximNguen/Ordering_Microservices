@@ -61,6 +61,7 @@ router = APIRouter(
 @router.get("/", response_model=list[DeliveryResponse], status_code=status.HTTP_200_OK)
 @limiter.limit("10/minute")
 async def get_all_deliveries(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     delivery_service: DeliveryService = Depends(get_delivery_service)
@@ -71,6 +72,7 @@ async def get_all_deliveries(
 @router.post("/", response_model=DeliveryResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
 async def create_delivery(
+    request: Request,
     delivery_create: DeliveryCreate,
     delivery_service: DeliveryService = Depends(get_delivery_service)
 ):
@@ -83,6 +85,7 @@ async def create_delivery(
 @router.get("/{delivery_id}", response_model=DeliveryResponse, status_code=status.HTTP_200_OK)
 @limiter.limit("10/minute")
 async def get_delivery_by_id(
+    request: Request,
     delivery_id: uuid.UUID,
     delivery_service: DeliveryService = Depends(get_delivery_service)
 ):
@@ -95,6 +98,7 @@ async def get_delivery_by_id(
 @router.delete("/{delivery_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("5/minute")
 async def delete_delivery(
+    request: Request,
     delivery_id: uuid.UUID,
     delivery_service: DeliveryService = Depends(get_delivery_service)
 ):
@@ -107,6 +111,7 @@ async def delete_delivery(
 @router.put("/{delivery_id}", response_model=DeliveryResponse, status_code=status.HTTP_200_OK)
 @limiter.limit("5/minute")
 async def update_delivery(
+    request: Request,
     delivery_id: uuid.UUID,
     delivery_update: DeliveryUpdate,
     delivery_service: DeliveryService = Depends(get_delivery_service)

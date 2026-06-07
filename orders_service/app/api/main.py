@@ -80,6 +80,7 @@ async def lifespan(app: FastAPI):
     await init_redis()
     cache_listener.start()
     
+    await kafka_consumer.start()
     await kafka_producer.start()
     logger.info("Kafka producer started")
     
@@ -117,6 +118,5 @@ app = FastAPI(title="Orders Service", lifespan=lifespan)
 app.include_router(orders.router)
 
 @app.get("/")
-@limiter.limit("100/minute")
 async def root():
     return {"message": "Orders Service is running"}

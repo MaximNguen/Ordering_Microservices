@@ -6,8 +6,8 @@ from typing import Any, Callable, Dict, Optional, Awaitable, Union
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from aiokafka.errors import KafkaError
 
-from config import kafka_config
-from kafka.events import BaseEvent, EventType, event_from_dict
+from kafka_service.config import kafka_config
+from .events import BaseEvent, EventType, event_from_dict
 
 logger = logging.getLogger(__name__)
 

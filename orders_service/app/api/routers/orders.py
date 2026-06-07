@@ -61,6 +61,7 @@ router = APIRouter(
 @router.get("/", response_model=list[OrderResponseSchema], status_code=status_fastapi.HTTP_200_OK)
 @limiter.limit("10/minute")
 async def get_all_orders(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     user_id: uuid.UUID | None = None,
@@ -81,6 +82,7 @@ async def get_all_orders(
 @router.post("/", response_model=OrderResponseSchema, status_code=status_fastapi.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 async def create_order(
+    request: Request,
     order_create: OrderCreateSchema,
     order_service: OrderService = Depends(get_order_service)
 ):
@@ -93,6 +95,7 @@ async def create_order(
 @router.get("/{order_id}", response_model=OrderResponseSchema, status_code=status_fastapi.HTTP_200_OK)
 @limiter.limit("10/minute")
 async def get_order(
+    request: Request,
     order_id: uuid.UUID,
     order_service: OrderService = Depends(get_order_service)
 ):
@@ -105,6 +108,7 @@ async def get_order(
 @router.put("/{order_id}", response_model=OrderResponseSchema, status_code=status_fastapi.HTTP_200_OK)
 @limiter.limit("10/minute")
 async def update_order_status(
+    request: Request,
     order_id: uuid.UUID,
     order_update: OrderUpdateStatusSchema,
     order_service: OrderService = Depends(get_order_service)

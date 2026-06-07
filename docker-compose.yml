@@ -63,7 +63,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
     volumes:
@@ -73,6 +73,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   users-db:
     image: postgres:16-alpine
@@ -140,17 +141,25 @@ services:
 
   users-service:
     build:
-      context: ./users_service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: users_service/Dockerfile
+    volumes:
+      - ./cache_settings:/app/cache_settings
+      - ./kafka_service:/app/kafka_service
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@users-db:5432/users_db
       - SECRET_KEY=changeme
       - ALGORITHM=HS256
       - INTERNAL_CALL_HEADER=X-Internal-Token
       - INTERNAL_CALL_TOKEN=internal-token
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
       - LOG_LEVEL=INFO
     depends_on:
       users-db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "8000:8000"
@@ -158,8 +167,11 @@ services:
 
   delivery-service:
     build:
-      context: ./delivery_service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: delivery_service/Dockerfile
+    volumes:
+      - ./cache_settings:/app/cache_settings
+      - ./kafka_service:/app/kafka_service
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@delivery-db:5432/delivery_db
       - GATEWAY_URL=http://gateway-service:8004
@@ -173,7 +185,7 @@ services:
       - REDIS_PORT=6379
       - REDIS_DB=0
       - LOG_LEVEL=INFO
-      - SKIP_ORDER_CHECK=true  # Важно! При Kafka режиме пропускаем HTTP проверку
+      - SKIP_ORDER_CHECK=true
     depends_on:
       delivery-db:
         condition: service_healthy
@@ -189,8 +201,11 @@ services:
 
   orders-service:
     build:
-      context: ./orders_service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: orders_service/Dockerfile
+    volumes:
+      - ./cache_settings:/app/cache_settings
+      - ./kafka_service:/app/kafka_service
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@orders-db:5432/orders_db
       - GATEWAY_URL=http://gateway-service:8004
@@ -219,8 +234,11 @@ services:
 
   products-service:
     build:
-      context: ./products_service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: products_service/Dockerfile
+    volumes:
+      - ./cache_settings:/app/cache_settings
+      - ./kafka_service:/app/kafka_service
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@products-db:5432/products_db
       - INTERNAL_CALL_HEADER=X-Internal-Token
@@ -246,8 +264,11 @@ services:
 
   gateway-service:
     build:
-      context: ./gateway_service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: gateway_service/Dockerfile
+    volumes:
+      - ./cache_settings:/app/cache_settings
+      - ./kafka_service:/app/kafka_service
     environment:
       - USERS_SERVICE_URL=http://users-service:8000
       - DELIVERY_SERVICE_URL=http://delivery-service:8001

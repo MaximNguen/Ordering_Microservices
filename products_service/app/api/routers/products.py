@@ -61,6 +61,7 @@ router = APIRouter(
 @router.get("/", response_model=list[ProductResponse], status_code=status.HTTP_200_OK)
 @limiter.limit("10/minute")
 async def get_all_products(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     product_service: ProductService = Depends(get_product_service),
@@ -75,6 +76,7 @@ async def get_all_products(
 @router.post("/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 async def create_product(
+    request: Request,
     product_create: ProductCreate,
     product_service: ProductService = Depends(get_product_service),
 ):
@@ -88,6 +90,7 @@ async def create_product(
 @router.get("/{product_id}", response_model=ProductResponse, status_code=status.HTTP_200_OK)
 @limiter.limit("10/minute")
 async def get_product(
+    request: Request,
     product_id: uuid.UUID,
     product_service: ProductService = Depends(get_product_service),
 ):
@@ -101,6 +104,7 @@ async def get_product(
 @router.put("/{product_id}", response_model=ProductResponse, status_code=status.HTTP_200_OK)
 @limiter.limit("10/minute")
 async def update_product(
+    request: Request, 
     product_id: uuid.UUID,
     product_update: ProductUpdate,
     product_service: ProductService = Depends(get_product_service),
@@ -115,6 +119,7 @@ async def update_product(
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("10/minute")
 async def delete_product(
+    request: Request,
     product_id: uuid.UUID,
     product_service: ProductService = Depends(get_product_service),
 ):

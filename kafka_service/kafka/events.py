@@ -13,6 +13,7 @@ class EventType(str, Enum):
     DELIVERY_UPDATED = "delivery.updated"
     PRODUCT_CREATED = "product.created"
     PRODUCT_UPDATED = "product.updated"
+    DELIVERY_RESPONSE = "delivery_response"
 
 
 class BaseEvent(BaseModel):
@@ -149,6 +150,7 @@ def event_from_dict(data: Dict[str, Any]) -> BaseEvent:
         EventType.DELIVERY_UPDATED: DeliveryUpdatedEvent,
         EventType.PRODUCT_CREATED: ProductCreatedEvent,
         EventType.PRODUCT_UPDATED: ProductUpdatedEvent,
+        EventType.DELIVERY_RESPONSE: DeliveryResponseEvent,
     }
     
     event_class = event_classes.get(event_type)

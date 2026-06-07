@@ -1,4 +1,4 @@
-from fastapi import HTTPException, status, Depends, APIRouter
+from fastapi import HTTPException, Request, status, Depends, APIRouter
 
 from fastapi.security import OAuth2PasswordRequestForm
 from slowapi import Limiter
@@ -19,6 +19,7 @@ router = APIRouter(
 @router.post("/", response_model=UserWithTokens, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 async def create_user(
+    request: Request,
     user_create: UserCreate,
     user_service: UserService = Depends(get_user_service)
 ):
@@ -30,7 +31,7 @@ async def create_user(
 
 @router.post("/token")
 @limiter.limit("10/minute")
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), user_service: UserService = Depends(get_user_service)):
+async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), user_service: UserService = Depends(get_user_service)):
     """Аутентификация пользователя и выдача JWT токенов."""
     token_response = await user_service.login(form_data.username, form_data.password)
     if not token_response:
@@ -41,6 +42,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), user_service: 
 @limiter.limit("10/minute")
 async def refresh_token(
     body: RefreshTokenRequest,
+    request: Request,
     _current_user=Depends(get_current_user),
     user_service: UserService = Depends(get_user_service),
 ):
@@ -50,6 +52,7 @@ async def refresh_token(
 @router.post("/access-token")
 @limiter.limit("10/minute")
 async def access_token(
+    request: Request,
     body: RefreshTokenRequest,
     _current_user=Depends(get_current_user),
     user_service: UserService = Depends(get_user_service),
@@ -59,6 +62,6 @@ async def access_token(
 
 @router.get("/me", response_model=UserSchema)
 @limiter.limit("50/minute")
-async def get_me(current_user=Depends(get_current_user)):
+async def get_me(request: Request, current_user=Depends(get_current_user)):
     """Получить данные текущего пользователя по access токену."""
     return current_user
