@@ -1,12 +1,12 @@
 import asyncio
 import logging
 from typing import Optional
-from shared.cache_manager import order_cache, OrderCacheKeys
+from cache_settings.cache_manager import order_cache, OrderCacheKeys
 
 logger = logging.getLogger(__name__)
 
 class CacheInvalidationListener:
-    """Слушает события инвалидации кеша от других сервисов"""
+    """Слушает события инвалидации кеша от сервиса заказов"""
     
     def __init__(self):
         self._task: Optional[asyncio.Task] = None

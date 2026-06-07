@@ -17,6 +17,8 @@ from app.kafka.handlers import DeliveryKafkaHandlers
 from app.repositories.delivery import DeliveryRepository
 from app.core.database import AsyncSessionLocal
 from app.services.delivery import DeliveryService
+from app.core.cache_listener import CacheInvalidationListener
+from cache_settings.redis_client import init_redis, close_redis
 
 try:
     from dotenv import load_dotenv
@@ -84,11 +86,14 @@ kafka_handlers: Optional[DeliveryKafkaHandlers] = None
 kafka_consumer: Optional[AIOKafkaConsumer] = None
 kafka_producer: Optional[AIOKafkaProducer] = None
 consume_task: Optional[asyncio.Task] = None
+cache_listener = CacheInvalidationListener()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # await create_db_and_tables()
     async with AsyncSessionLocal() as session:
+        await init_redis()
+        cache_listener.start()
         delivery_repo = DeliveryRepository(session)
         delivery_service = DeliveryService(delivery_repo)
         
@@ -154,6 +159,8 @@ async def lifespan(app: FastAPI):
         if kafka_handlers:
             await kafka_handlers.stop_producer()
             logger.info("Kafka producer stopped")
+    await close_redis()
+    await cache_listener.stop()
     logger.info("Заканчиваем работу.")
     
 app = FastAPI(
