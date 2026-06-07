@@ -1,109 +1,117 @@
-import uuid
+# orders_service/main.py (исправленный)
+import asyncio
+from contextlib import asynccontextmanager
+import logging
 import os
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Security, status as status_fastapi
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-import jwt
+from fastapi import FastAPI
 
-from app.core.dependencies import get_order_service
-from app.models.order import OrderStatus
-from app.schemas.orders import OrderCreateSchema, OrderResponseSchema, OrderUpdateStatusSchema
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+if load_dotenv:
+    load_dotenv()
+
+from app.core.database import create_db_and_tables
+from app.api.routers import orders
+from app.core.database import AsyncSessionLocal
+from app.repositories.orders import OrderRepository
 from app.services.orders import OrderService
+from app.kafka.handlers import OrderKafkaHandlers
+from app.core.cache_listener import CacheInvalidationListener
+from cache_settings.redis_client import init_redis, close_redis
+from kafka_service.kafka.consumer import kafka_consumer
+from kafka_service.kafka.producer import kafka_producer
+from kafka_service.kafka.events import EventType
 
-bearer_scheme = HTTPBearer(auto_error=False)
-INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Token")
-INTERNAL_CALL_TOKEN = os.getenv("INTERNAL_CALL_TOKEN", "")
-SECRET_KEY = os.getenv("SECRET_KEY", "")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
 
+def _configure_logging() -> None:
+    log_dir = Path(os.getenv("LOG_DIR", "logs"))
+    log_dir.mkdir(parents=True, exist_ok=True)
+    startup_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"orders_service_{startup_time}.log"
 
-def require_service_auth(
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
-) -> None:
-    if INTERNAL_CALL_TOKEN and request.headers.get(INTERNAL_CALL_HEADER) == INTERNAL_CALL_TOKEN:
-        return
-    if credentials is None:
-        raise HTTPException(
-            status_code=status_fastapi.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if not SECRET_KEY:
-        raise HTTPException(
-            status_code=status_fastapi.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Auth is not configured",
-        )
-    try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        if payload.get("token_type") != "access":
-            raise HTTPException(
-                status_code=status_fastapi.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token type",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-    except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=status_fastapi.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_level = getattr(logging, log_level_name, logging.INFO)
+    max_bytes = int(os.getenv("LOG_MAX_BYTES", "1000000"))
+    backup_count = int(os.getenv("LOG_BACKUP_COUNT", "3"))
 
-router = APIRouter(
-    prefix="/orders",
-    tags=["orders"],
-    dependencies=[Depends(require_service_auth)],
-)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
 
-@router.get("/", response_model=list[OrderResponseSchema], status_code=status_fastapi.HTTP_200_OK)
-async def get_all_orders(
-    skip: int = 0,
-    limit: int = 100,
-    user_id: uuid.UUID | None = None,
-    status: OrderStatus | None = None,
-    order_service: OrderService = Depends(get_order_service)
-):
-    """Получить список всех заказов с поддержкой пагинации."""
-    results = await order_service.get_all_orders(
-        skip=skip,
-        limit=limit,
-        user_id=user_id,
-        status=status,
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+        encoding="utf-8",
     )
-    if not results:
-        raise HTTPException(status_code=status_fastapi.HTTP_404_NOT_FOUND, detail="Заказы не найдены")
-    return results
+    file_handler.setLevel(log_level)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    )
+    root_logger.addHandler(file_handler)
 
-@router.post("/", response_model=OrderResponseSchema, status_code=status_fastapi.HTTP_201_CREATED)
-async def create_order(
-    order_create: OrderCreateSchema,
-    order_service: OrderService = Depends(get_order_service)
-):
-    """Создать новый заказ на основе данных из запроса."""
-    order = await order_service.create_order(order_create)
-    if not order:
-        raise HTTPException(status_code=status_fastapi.HTTP_400_BAD_REQUEST, detail="Ошибка при создании заказа")
-    return order
+    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uvicorn_logger = logging.getLogger(logger_name)
+        uvicorn_logger.setLevel(log_level)
+        if not uvicorn_logger.propagate:
+            uvicorn_logger.addHandler(file_handler)
 
-@router.get("/{order_id}", response_model=OrderResponseSchema, status_code=status_fastapi.HTTP_200_OK)
-async def get_order(
-    order_id: uuid.UUID,
-    order_service: OrderService = Depends(get_order_service)
-):
-    """Получить информацию о конкретном заказе по его ID."""
-    order = await order_service.get_order_by_id(order_id)
-    if not order:
-        raise HTTPException(status_code=status_fastapi.HTTP_404_NOT_FOUND, detail="Заказ не найден")
-    return order
 
-@router.put("/{order_id}", response_model=OrderResponseSchema, status_code=status_fastapi.HTTP_200_OK)
-async def update_order_status(
-    order_id: uuid.UUID,
-    order_update: OrderUpdateStatusSchema,
-    order_service: OrderService = Depends(get_order_service)
-):
-    """Обновить статус существующего заказа по его ID."""
-    updated_order = await order_service.update_order_status(order_id, order_update)
-    if not updated_order:
-        raise HTTPException(status_code=status_fastapi.HTTP_404_NOT_FOUND, detail="Заказ не найден или ошибка при обновлении статуса")
-    return updated_order
+_configure_logging()
+logger = logging.getLogger(__name__)
+
+cache_listener = CacheInvalidationListener()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Starting Orders Service...")
+    
+    await init_redis()
+    cache_listener.start()
+    
+    await kafka_producer.start()
+    logger.info("Kafka producer started")
+    
+    async with AsyncSessionLocal() as session:
+        order_repo = OrderRepository(db=session)
+        order_service = OrderService(order_repo=order_repo)
+        
+        kafka_handlers = OrderKafkaHandlers(order_service)
+        
+        kafka_consumer.register_handler(EventType.ORDER_CREATED, kafka_handlers.handle_order_created)
+        kafka_consumer.register_handler(EventType.ORDER_STATUS_CHANGED, kafka_handlers.handle_order_updated)
+        
+        await kafka_consumer.start(
+            topics=["order.events", "order.requests"],
+            group_id="orders-service-group"
+        )
+        logger.info("Kafka consumer started for orders service")
+        
+        app.state.kafka_handlers = kafka_handlers
+        app.state.order_service = order_service
+        
+        yield
+        
+        await kafka_consumer.stop()
+        await kafka_producer.stop()
+        logger.info("Kafka stopped")
+    
+    await cache_listener.stop()
+    await close_redis()
+    logger.info("Orders Service shutdown complete")
+
+
+app = FastAPI(title="Orders Service", lifespan=lifespan)
+
+app.include_router(orders.router)
+
+@app.get("/")
+async def root():
+    return {"message": "Orders Service is running"}

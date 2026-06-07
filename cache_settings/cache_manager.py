@@ -80,7 +80,7 @@ class CacheManager:
             )
             logger.info(f"Published cache event {event} with data {data}")
         except Exception as e:
-            logger.error(f"Error publishing cache event {event}: {e}")
+            logger.error(f"Error publishing cache event: {e}")
             
     async def subscribe_to_events(self, callback: Callable[[dict], Awaitable[None]]):
         """Подписаться на события инвалидации кеша"""
@@ -107,6 +107,7 @@ product_cache = CacheManager(prefix="product")
 class OrderCacheKeys:
     ORDER_BY_ID = "order:{order_id}"
     ALL_ORDERS = "all_orders:skip:{skip}:limit:{limit}"
+    ALL_ORDERS_FILTERED = "all_orders:skip:{skip}:limit:{limit}:user:{user_id}:status:{status}"
     USER_ORDERS = "user:{user_id}:orders"
     
 class DeliveryCacheKeys:

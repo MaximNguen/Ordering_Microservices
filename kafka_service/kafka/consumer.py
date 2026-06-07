@@ -1,14 +1,13 @@
-# app/core/kafka/consumer.py
 import asyncio
 import json
 import logging
-from typing import Any, Callable, Dict, Optional, Awaitable
+from typing import Any, Callable, Dict, Optional, Awaitable, Union
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from aiokafka.errors import KafkaError
 
 from config import kafka_config
-from kafka.events import BaseEvent, EventType
+from kafka.events import BaseEvent, EventType, event_from_dict
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +41,7 @@ class KafkaConsumerManager:
                 max_poll_records=kafka_config.KAFKA_MAX_POLL_RECORDS,
                 session_timeout_ms=kafka_config.KAFKA_SESSION_TIMEOUT_MS,
                 value_deserializer=lambda v: json.loads(v.decode('utf-8')) if v else None,
+                key_deserializer=lambda k: k.decode('utf-8') if k else None,
             )
             await self.consumer.start()
             self._running = True
@@ -56,9 +56,12 @@ class KafkaConsumerManager:
         """Остановка консьюмера"""
         self._running = False
         
-        # Отмена всех задач
         for task in self._tasks:
             task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
         
         if self.consumer:
             await self.consumer.stop()
@@ -74,7 +77,6 @@ class KafkaConsumerManager:
                         await self.consumer.commit()
                 except Exception as e:
                     logger.error(f"Error processing message: {e}")
-                    # Отправка в DLQ при ошибке
                     await self._send_to_dlq(msg, str(e))
         except asyncio.CancelledError:
             logger.info("Consumer loop cancelled")
@@ -84,34 +86,31 @@ class KafkaConsumerManager:
             self._running = False
 
     async def _process_message(self, msg) -> None:
-        """Обработка одного сообщения"""
+        """Обработка одного сообщения с использованием правильных типов событий"""
         if not msg.value:
             logger.warning("Empty message received")
             return
 
         event_data = msg.value
-        event_type_str = event_data.get("event_type")
         
-        if not event_type_str:
-            logger.warning(f"Message missing event_type: {event_data}")
-            return
-
         try:
-            event_type = EventType(event_type_str)
-            handler = self._handlers.get(event_type)
+            # Используем фабрику для создания правильного типа события
+            event = event_from_dict(event_data)
+            
+            handler = self._handlers.get(event.event_type)
             
             if handler:
-                # Создание события (нужно будет доработать в зависимости от типа)
-                event = BaseEvent(**event_data)
                 await handler(event)
-                logger.debug(f"Processed event: {event_type}")
+                logger.debug(f"Processed event: {event.event_type}")
             else:
-                logger.warning(f"No handler registered for event type: {event_type}")
-        except ValueError as e:
-            logger.error(f"Invalid event type: {event_type_str}, error: {e}")
+                logger.warning(f"No handler registered for event type: {event.event_type}")
+                
+        except Exception as e:
+            logger.error(f"Error processing message: {e}, data: {event_data}")
 
     async def _send_to_dlq(self, msg, error: str) -> None:
         """Отправка сообщения в Dead Letter Queue"""
+        dlq_producer = None
         try:
             dlq_producer = AIOKafkaProducer(
                 bootstrap_servers=kafka_config.KAFKA_BOOTSTRAP_SERVERS,
@@ -128,10 +127,12 @@ class KafkaConsumerManager:
                 "offset": msg.offset,
             }
             await dlq_producer.send(kafka_config.TOPIC_DLQ, value=dlq_message)
-            await dlq_producer.stop()
             logger.warning(f"Message sent to DLQ: {error}")
         except Exception as e:
             logger.error(f"Failed to send to DLQ: {e}")
+        finally:
+            if dlq_producer:
+                await dlq_producer.stop()
 
 
 kafka_consumer = KafkaConsumerManager()

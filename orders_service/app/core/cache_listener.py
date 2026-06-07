@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Optional
 from cache_settings.cache_manager import order_cache, OrderCacheKeys
+from cache_settings.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +36,20 @@ class CacheInvalidationListener:
     
     async def start_listening(self):
         """Запуск слушателя событий"""
-        logger.info("Starting cache invalidation listener...")
-        await order_cache.subscribe_to_events(self.handle_invalidation_event)
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                logger.info("Starting order cache invalidation listener...")
+                redis_client = await get_redis()
+                await redis_client.ping()
+                await order_cache.subscribe_to_events(self.handle_invalidation_event)
+                return
+            except Exception as e:
+                logger.error(f"Failed to start listener (attempt {attempt+1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2)
+                else:
+                    raise
     
     def start(self):
         """Запуск в фоновом режиме"""

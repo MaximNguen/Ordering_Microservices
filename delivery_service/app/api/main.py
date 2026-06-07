@@ -8,17 +8,20 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 
 from app.core.database import create_db_and_tables
-from app.api.routers import delivery
+from app.api.routers.delivery import require_service_auth
 from app.kafka.handlers import DeliveryKafkaHandlers
 from app.repositories.delivery import DeliveryRepository
 from app.core.database import AsyncSessionLocal
 from app.services.delivery import DeliveryService
 from app.core.cache_listener import CacheInvalidationListener
 from cache_settings.redis_client import init_redis, close_redis
+from kafka_service.kafka.consumer import kafka_consumer
+from kafka_service.kafka.producer import kafka_producer
+from kafka_service.kafka.events import EventType
 
 try:
     from dotenv import load_dotenv
@@ -90,75 +93,32 @@ cache_listener = CacheInvalidationListener()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # await create_db_and_tables()
+    await init_redis()
+    cache_listener.start()
+    await kafka_producer.start()
+    logger.info("Kafka producer started")
     async with AsyncSessionLocal() as session:
-        await init_redis()
-        cache_listener.start()
         delivery_repo = DeliveryRepository(session)
         delivery_service = DeliveryService(delivery_repo)
         
         kafka_handlers = DeliveryKafkaHandlers(delivery_service)
-        await kafka_handlers.start_producer()
-        
-        bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-        
-        kafka_consumer = AIOKafkaConsumer(
-            "delivery.events",
-            bootstrap_servers=bootstrap_servers,
-            group_id="delivery-service-group",
-            auto_offset_reset="earliest",
-            enable_auto_commit=True,
-            value_deserializer=lambda v: json.loads(v.decode('utf-8')) if v else None
+        kafka_consumer.register_handler(EventType.DELIVERY_CREATED, kafka_handlers.handle_delivery_created)
+        kafka_consumer.register_handler(EventType.DELIVERY_UPDATED, kafka_handlers.handle_delivery_updated)
+
+        await kafka_consumer.start(
+            topics=["delivery.events", "delivery.requests"],
+            group_id="delivery-service-group"
         )
-        await kafka_consumer.start()
-        logger.info(f"Delivery Kafka consumer started on topic 'delivery.events'")
+        logger.info("Kafka consumer started for delivery service")
         
-        async def consume_loop():
-            try:
-                async for msg in kafka_consumer:
-                    try:
-                        event = msg.value
-                        if not event:
-                            continue
-                            
-                        event_type = event.get("event_type")
-                        logger.info(f"Received event: {event_type}")
-                        
-                        if event_type == "delivery.created":
-                            await kafka_handlers.handle_delivery_created(event)
-                        elif event_type == "delivery.updated":
-                            await kafka_handlers.handle_delivery_updated(event)
-                        else:
-                            logger.warning(f"Unknown event type: {event_type}")
-                            
-                    except Exception as e:
-                        logger.error(f"Error processing message: {e}", exc_info=True)
-                        
-            except asyncio.CancelledError:
-                logger.info("Consumer loop cancelled")
-            except Exception as e:
-                logger.error(f"Consumer loop error: {e}", exc_info=True)
-            finally:
-                logger.info("Consumer loop finished")
-
-        consume_task = asyncio.create_task(consume_loop())
-
+        app.state.kafka_handlers = kafka_handlers
+        app.state.delivery_service = delivery_service
+        
         yield
 
-        if consume_task:
-            consume_task.cancel()
-            try:
-                await consume_task
-            except asyncio.CancelledError:
-                pass
-
-        if kafka_consumer:
-            await kafka_consumer.stop()
-            logger.info("Kafka consumer stopped")
-
-        if kafka_handlers:
-            await kafka_handlers.stop_producer()
-            logger.info("Kafka producer stopped")
+        await kafka_consumer.stop()
+        await kafka_producer.stop()
+        logger.info("Kafka stopped")
     await close_redis()
     await cache_listener.stop()
     logger.info("Заканчиваем работу.")
@@ -168,7 +128,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-app.include_router(delivery.router)
+app.include_router(delivery.router, dependencies=[Depends(require_service_auth)])
 
 @app.get("/")
 async def root():
