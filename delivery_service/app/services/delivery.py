@@ -9,7 +9,7 @@ import httpx
 from app.repositories.delivery import DeliveryRepository
 from app.schemas.delivery import DeliveryCreate, DeliveryUpdate, DeliveryResponse
 from cache_settings.cache_manager import delivery_cache, DeliveryCacheKeys
-from app.api.main import (
+from app.core.metrics import (
     delivery_created_counter, 
     delivery_updated_counter, 
     delivery_delete_counter, 
