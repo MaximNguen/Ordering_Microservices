@@ -1,30 +1,22 @@
 scrape_configs:
-  - job_name: 'user-service'
-    dns_sd_configs:
-      - names: ['user-service']
-        port: 8000
-    metrics_path: '/metrics'
-
   - job_name: 'delivery-service'
-    dns_sd_configs:
-      - names: ['delivery-service']
-        port: 8001
+    static_configs:
+      - targets: ['delivery-service:8001']
     metrics_path: '/metrics'
-    
-  - job_name: 'order-service'
-    dns_sd_configs:
-      - names: ['order-service']
-        port: 8002
-    metrics_path: '/metrics'
+    scrape_interval: 15s
 
-  - job_name: 'product-service'
-    dns_sd_configs:
-      - names: ['product-service']
-        port: 8003
-    metrics_path: '/metrics'
-
-  - job_name: 'gateway-service'
-    dns_sd_configs:
-      - names: ['gateway-service']
-        port: 8004
-    metrics_path: '/metrics'
+  # - job_name: 'users-service'
+  #   static_configs:
+  #     - targets: ['users-service:8000']
+  
+  # - job_name: 'orders-service'
+  #   static_configs:
+  #     - targets: ['orders-service:8002']
+  
+  # - job_name: 'products-service'
+  #   static_configs:
+  #     - targets: ['products-service:8003']
+  
+  # - job_name: 'gateway-service'
+  #   static_configs:
+  #     - targets: ['gateway-service:8004']

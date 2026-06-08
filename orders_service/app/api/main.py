@@ -79,11 +79,7 @@ async def lifespan(app: FastAPI):
     
     await init_redis()
     cache_listener.start()
-    
-    await kafka_consumer.start()
-    await kafka_producer.start()
-    logger.info("Kafka producer started")
-    
+
     async with AsyncSessionLocal() as session:
         order_repo = OrderRepository(db=session)
         order_service = OrderService(order_repo=order_repo)
@@ -92,6 +88,9 @@ async def lifespan(app: FastAPI):
         
         kafka_consumer.register_handler(EventType.ORDER_CREATED, kafka_handlers.handle_order_created)
         kafka_consumer.register_handler(EventType.ORDER_STATUS_CHANGED, kafka_handlers.handle_order_updated)
+        
+        await kafka_producer.start()
+        logger.info("Kafka producer started")
         
         await kafka_consumer.start(
             topics=["order.events", "order.requests"],
