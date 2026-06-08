@@ -8,7 +8,10 @@ import jwt
 from app.core.dependencies import get_delivery_service
 from app.schemas.delivery import DeliveryCreate, DeliveryUpdate, DeliveryResponse
 from app.services.delivery import DeliveryService
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 bearer_scheme = HTTPBearer(auto_error=False)
 INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Token")
 INTERNAL_CALL_TOKEN = os.getenv("INTERNAL_CALL_TOKEN", "")
@@ -54,8 +57,11 @@ router = APIRouter(
     dependencies=[Depends(require_service_auth)],
 )
 
+
 @router.get("/", response_model=list[DeliveryResponse], status_code=status.HTTP_200_OK)
+@limiter.limit("10/minute")
 async def get_all_deliveries(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     delivery_service: DeliveryService = Depends(get_delivery_service)
@@ -64,7 +70,9 @@ async def get_all_deliveries(
     return await delivery_service.get_all_deliveries(skip=skip, limit=limit)
 
 @router.post("/", response_model=DeliveryResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
 async def create_delivery(
+    request: Request,
     delivery_create: DeliveryCreate,
     delivery_service: DeliveryService = Depends(get_delivery_service)
 ):
@@ -75,7 +83,9 @@ async def create_delivery(
     return delivery
 
 @router.get("/{delivery_id}", response_model=DeliveryResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("10/minute")
 async def get_delivery_by_id(
+    request: Request,
     delivery_id: uuid.UUID,
     delivery_service: DeliveryService = Depends(get_delivery_service)
 ):
@@ -86,7 +96,9 @@ async def get_delivery_by_id(
     return delivery
 
 @router.delete("/{delivery_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("5/minute")
 async def delete_delivery(
+    request: Request,
     delivery_id: uuid.UUID,
     delivery_service: DeliveryService = Depends(get_delivery_service)
 ):
@@ -97,7 +109,9 @@ async def delete_delivery(
     await delivery_service.delete_delivery(delivery_id)
     
 @router.put("/{delivery_id}", response_model=DeliveryResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("5/minute")
 async def update_delivery(
+    request: Request,
     delivery_id: uuid.UUID,
     delivery_update: DeliveryUpdate,
     delivery_service: DeliveryService = Depends(get_delivery_service)

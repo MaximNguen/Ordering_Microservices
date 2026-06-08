@@ -1,22 +1,31 @@
 from contextlib import asynccontextmanager
 import logging
 import os
-import json
 import asyncio
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-from fastapi import FastAPI
-from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from fastapi import Depends, FastAPI
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 
 from app.core.database import create_db_and_tables
-from app.api.routers import delivery
+from app.api.routers.delivery import require_service_auth
 from app.kafka.handlers import DeliveryKafkaHandlers
 from app.repositories.delivery import DeliveryRepository
 from app.core.database import AsyncSessionLocal
 from app.services.delivery import DeliveryService
+from app.core.cache_listener import CacheInvalidationListener
+from cache_settings.redis_client import init_redis, close_redis
+from kafka_service.kafka.consumer import kafka_consumer
+from kafka_service.kafka.producer import kafka_producer
+from kafka_service.kafka.events import EventType
+from app.api.routers import delivery
 
 try:
     from dotenv import load_dotenv
@@ -25,9 +34,6 @@ except ImportError:
 
 if load_dotenv:
     load_dotenv()
-
-from app.core.database import create_db_and_tables
-from app.api.routers import delivery
 
 
 def _find_file_handler(logger: logging.Logger, log_file: Path) -> RotatingFileHandler | None:
@@ -81,79 +87,86 @@ _configure_logging()
 logger = logging.getLogger(__name__)
 
 kafka_handlers: Optional[DeliveryKafkaHandlers] = None
-kafka_consumer: Optional[AIOKafkaConsumer] = None
-kafka_producer: Optional[AIOKafkaProducer] = None
 consume_task: Optional[asyncio.Task] = None
+cache_listener = CacheInvalidationListener()
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+
+delivery_created_counter = Counter(
+    'delivery_created_total', 
+    'Total number of deliveries created',
+    ['status']
+)
+
+delivery_updated_counter = Counter(
+    'delivery_updated_total',
+    'Total number of deliveries updated',
+    ['field']
+)
+
+delivery_delete_counter = Counter(
+    'delivery_deleted_total',
+    'Total number of deliveries deleted'
+)
+
+kafka_messages_received = Counter(
+    'kafka_messages_received_total',
+    'Total Kafka messages received',
+    ['event_type', 'topic']
+)
+
+kafka_processing_time = Histogram(
+    'kafka_message_processing_seconds',
+    'Time spent processing Kafka messages',
+    ['event_type'],
+    buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0)
+)
+
+active_deliveries_gauge = Gauge(
+    'active_deliveries_count',
+    'Current number of active deliveries'
+)
+
+db_query_duration = Histogram(
+    'db_query_duration_seconds',
+    'Database query duration',
+    ['query_type'],
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0)
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # await create_db_and_tables()
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    
+    await init_redis()
+    cache_listener.start()
+    await kafka_producer.start()
+    logger.info("Kafka producer started")
     async with AsyncSessionLocal() as session:
         delivery_repo = DeliveryRepository(session)
         delivery_service = DeliveryService(delivery_repo)
         
         kafka_handlers = DeliveryKafkaHandlers(delivery_service)
-        await kafka_handlers.start_producer()
-        
-        bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-        
-        kafka_consumer = AIOKafkaConsumer(
-            "delivery.events",
-            bootstrap_servers=bootstrap_servers,
-            group_id="delivery-service-group",
-            auto_offset_reset="earliest",
-            enable_auto_commit=True,
-            value_deserializer=lambda v: json.loads(v.decode('utf-8')) if v else None
+        kafka_consumer.register_handler(EventType.DELIVERY_CREATED, kafka_handlers.handle_delivery_created)
+        kafka_consumer.register_handler(EventType.DELIVERY_UPDATED, kafka_handlers.handle_delivery_updated)
+
+        await kafka_consumer.start(
+            topics=["delivery.events", "delivery.requests"],
+            group_id="delivery-service-group"
         )
-        await kafka_consumer.start()
-        logger.info(f"Delivery Kafka consumer started on topic 'delivery.events'")
+        logger.info("Kafka consumer started for delivery service")
         
-        async def consume_loop():
-            try:
-                async for msg in kafka_consumer:
-                    try:
-                        event = msg.value
-                        if not event:
-                            continue
-                            
-                        event_type = event.get("event_type")
-                        logger.info(f"Received event: {event_type}")
-                        
-                        if event_type == "delivery.created":
-                            await kafka_handlers.handle_delivery_created(event)
-                        elif event_type == "delivery.updated":
-                            await kafka_handlers.handle_delivery_updated(event)
-                        else:
-                            logger.warning(f"Unknown event type: {event_type}")
-                            
-                    except Exception as e:
-                        logger.error(f"Error processing message: {e}", exc_info=True)
-                        
-            except asyncio.CancelledError:
-                logger.info("Consumer loop cancelled")
-            except Exception as e:
-                logger.error(f"Consumer loop error: {e}", exc_info=True)
-            finally:
-                logger.info("Consumer loop finished")
-
-        consume_task = asyncio.create_task(consume_loop())
-
+        app.state.kafka_handlers = kafka_handlers
+        app.state.delivery_service = delivery_service
+        
         yield
 
-        if consume_task:
-            consume_task.cancel()
-            try:
-                await consume_task
-            except asyncio.CancelledError:
-                pass
-
-        if kafka_consumer:
-            await kafka_consumer.stop()
-            logger.info("Kafka consumer stopped")
-
-        if kafka_handlers:
-            await kafka_handlers.stop_producer()
-            logger.info("Kafka producer stopped")
+        await kafka_consumer.stop()
+        await kafka_producer.stop()
+        logger.info("Kafka stopped")
+    await close_redis()
+    await cache_listener.stop()
     logger.info("Заканчиваем работу.")
     
 app = FastAPI(
@@ -161,7 +174,18 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-app.include_router(delivery.router)
+instrumentator = Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+    should_respect_env_var=True,
+    should_instrument_requests_inprogress=True,
+    excluded_handlers=["/metrics", "/health"],
+    env_var_name="ENABLE_METRICS",
+    inprogress_name="http_requests_inprogress",
+    inprogress_labels=True,
+)
+instrumentator.add().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+app.include_router(delivery.router, dependencies=[Depends(require_service_auth)])
 
 @app.get("/")
 async def root():

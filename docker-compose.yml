@@ -6,6 +6,11 @@ services:
       - ZOOKEEPER_TICK_TIME=2000
     ports:
       - "2181:2181"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   kafka:
     image: confluentinc/cp-kafka:7.6.1
@@ -13,21 +18,62 @@ services:
     environment:
       - KAFKA_BROKER_ID=1
       - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
-      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT_INTERNAL
       - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
       - KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0
       - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
       - "9092:9092"
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:9092 --list"]
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
       interval: 10s
       timeout: 10s
       retries: 12
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      echo 'Waiting for Kafka to be ready...'
+      sleep 5
+      
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic order.events --partitions 3 --replication-factor 1
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic order.requests --partitions 3 --replication-factor 1
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic delivery.events --partitions 3 --replication-factor 1
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic delivery.requests --partitions 3 --replication-factor 1
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic product.events --partitions 3 --replication-factor 1
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic gateway.responses --partitions 3 --replication-factor 1
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic dead-letter-queue --partitions 1 --replication-factor 1
+      
+      echo 'Topics created successfully'
+      "
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   users-db:
     image: postgres:16-alpine
@@ -39,6 +85,11 @@ services:
       - users_db_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   delivery-db:
     image: postgres:16-alpine
@@ -50,6 +101,11 @@ services:
       - delivery_db_data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   orders-db:
     image: postgres:16-alpine
@@ -61,6 +117,11 @@ services:
       - orders_db_data:/var/lib/postgresql/data
     ports:
       - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   products-db:
     image: postgres:16-alpine
@@ -72,26 +133,45 @@ services:
       - products_db_data:/var/lib/postgresql/data
     ports:
       - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   users-service:
     build:
       context: .
       dockerfile: users_service/Dockerfile
+    volumes:
+      - ./cache_settings:/app/cache_settings
+      - ./kafka_service:/app/kafka_service
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@users-db:5432/users_db
       - SECRET_KEY=changeme
       - ALGORITHM=HS256
       - INTERNAL_CALL_HEADER=X-Internal-Token
       - INTERNAL_CALL_TOKEN=internal-token
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - LOG_LEVEL=INFO
     depends_on:
-      - users-db
+      users-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8000:8000"
+    restart: unless-stopped
 
   delivery-service:
     build:
       context: .
       dockerfile: delivery_service/Dockerfile
+    volumes:
+      - ./cache_settings:/app/cache_settings
+      - ./kafka_service:/app/kafka_service
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@delivery-db:5432/delivery_db
       - GATEWAY_URL=http://gateway-service:8004
@@ -99,20 +179,33 @@ services:
       - INTERNAL_CALL_TOKEN=internal-token
       - SECRET_KEY=changeme
       - ALGORITHM=HS256
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - LOG_LEVEL=INFO
+      - SKIP_ORDER_CHECK=true
     depends_on:
       delivery-db:
-        condition: service_started
+        condition: service_healthy
       kafka:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     ports:
       - "8001:8001"
-    restart: on-failure
+    restart: unless-stopped
 
   orders-service:
     build:
       context: .
       dockerfile: orders_service/Dockerfile
+    volumes:
+      - ./cache_settings:/app/cache_settings
+      - ./kafka_service:/app/kafka_service
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@orders-db:5432/orders_db
       - GATEWAY_URL=http://gateway-service:8004
@@ -120,35 +213,62 @@ services:
       - INTERNAL_CALL_TOKEN=internal-token
       - SECRET_KEY=changeme
       - ALGORITHM=HS256
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - LOG_LEVEL=INFO
     depends_on:
       orders-db:
-        condition: service_started
+        condition: service_healthy
       kafka:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     ports:
       - "8002:8002"
-    restart: on-failure
+    restart: unless-stopped
 
   products-service:
     build:
       context: .
       dockerfile: products_service/Dockerfile
+    volumes:
+      - ./cache_settings:/app/cache_settings
+      - ./kafka_service:/app/kafka_service
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@products-db:5432/products_db
       - INTERNAL_CALL_HEADER=X-Internal-Token
       - INTERNAL_CALL_TOKEN=internal-token
       - SECRET_KEY=changeme
       - ALGORITHM=HS256
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - LOG_LEVEL=INFO
     depends_on:
-      - products-db
+      products-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8003:8003"
+    restart: unless-stopped
 
   gateway-service:
     build:
       context: .
       dockerfile: gateway_service/Dockerfile
+    volumes:
+      - ./cache_settings:/app/cache_settings
+      - ./kafka_service:/app/kafka_service
     environment:
       - USERS_SERVICE_URL=http://users-service:8000
       - DELIVERY_SERVICE_URL=http://delivery-service:8001
@@ -158,19 +278,49 @@ services:
       - ALGORITHM=HS256
       - INTERNAL_CALL_HEADER=X-Internal-Token
       - INTERNAL_CALL_TOKEN=internal-token
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - KAFKA_ENABLED=true
+      - USE_KAFKA_FOR=orders_create,orders_update,deliveries_create,deliveries_update
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - LOG_LEVEL=INFO
     depends_on:
       users-service:
         condition: service_started
+      delivery-service:
+        condition: service_started
+      orders-service:
+        condition: service_started
+      products-service:
+        condition: service_started
       kafka:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     ports:
       - "8004:8004"
-    restart: on-failure
+    restart: unless-stopped
+    
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
 
 volumes:
   users_db_data:
   delivery_db_data:
   orders_db_data:
   products_db_data:
+  redis_data:
+
+networks:
+  default:
+    name: microservices-network
+    driver: bridge

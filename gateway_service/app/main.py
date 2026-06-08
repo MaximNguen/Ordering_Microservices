@@ -14,6 +14,9 @@ from fastapi.security import HTTPBearer
 
 from app.kafka.request_response import kafka_rr
 from kafka_service.kafka.events import EventType
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 try:
     from dotenv import load_dotenv
@@ -103,9 +106,13 @@ KAFKA_ENABLED = os.getenv("KAFKA_ENABLED", "true").lower() == "true"
 bearer_scheme = HTTPBearer(auto_error=False)
 
 HOP_BY_HOP_HEADERS = {"connection", "transfer-encoding", "content-length"}
+    
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.state.http = httpx.AsyncClient(timeout=10.0)
     if KAFKA_ENABLED:
         await kafka_rr.start()
@@ -254,6 +261,7 @@ async def _proxy_request(request: Request, base_url: str) -> Response:
 
 @app.api_route("/users", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], tags=["users"])
 @app.api_route("/users/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], tags=["users"])
+@limiter.limit("100/minute")
 async def users_proxy(request: Request):
     return await _proxy_request(request, USERS_SERVICE_URL)
 
@@ -270,6 +278,7 @@ async def users_proxy(request: Request):
     dependencies=[Security(bearer_scheme), Depends(require_access_token)],
     tags=["deliveries"],
 )
+@limiter.limit("100/minute")
 
 async def deliveries_proxy(request: Request):
     if request.method == "GET":
@@ -305,6 +314,7 @@ async def deliveries_proxy(request: Request):
     dependencies=[Security(bearer_scheme), Depends(require_access_token)],
     tags=["orders"],
 )
+@limiter.limit("100/minute")
 
 async def orders_proxy(request: Request):
     if request.method == "GET":
@@ -334,12 +344,14 @@ async def orders_proxy(request: Request):
     dependencies=[Security(bearer_scheme), Depends(require_access_token)],
     tags=["products"],
 )
+@limiter.limit("100/minute")
 @app.api_route(
     "/products/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     dependencies=[Security(bearer_scheme), Depends(require_access_token)],
     tags=["products"],
 )
+@limiter.limit("100/minute")
 async def products_proxy(request: Request):
     return await _proxy_request(request, PRODUCTS_SERVICE_URL)
 

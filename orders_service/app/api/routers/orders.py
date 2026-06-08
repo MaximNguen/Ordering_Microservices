@@ -4,12 +4,15 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Request, Security, status as status_fastapi
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.core.dependencies import get_order_service
 from app.models.order import OrderStatus
 from app.schemas.orders import OrderCreateSchema, OrderResponseSchema, OrderUpdateStatusSchema
 from app.services.orders import OrderService
 
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 bearer_scheme = HTTPBearer(auto_error=False)
 INTERNAL_CALL_HEADER = os.getenv("INTERNAL_CALL_HEADER", "X-Internal-Token")
 INTERNAL_CALL_TOKEN = os.getenv("INTERNAL_CALL_TOKEN", "")
@@ -56,7 +59,9 @@ router = APIRouter(
 )
 
 @router.get("/", response_model=list[OrderResponseSchema], status_code=status_fastapi.HTTP_200_OK)
+@limiter.limit("10/minute")
 async def get_all_orders(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     user_id: uuid.UUID | None = None,
@@ -75,7 +80,9 @@ async def get_all_orders(
     return results
 
 @router.post("/", response_model=OrderResponseSchema, status_code=status_fastapi.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 async def create_order(
+    request: Request,
     order_create: OrderCreateSchema,
     order_service: OrderService = Depends(get_order_service)
 ):
@@ -86,7 +93,9 @@ async def create_order(
     return order
 
 @router.get("/{order_id}", response_model=OrderResponseSchema, status_code=status_fastapi.HTTP_200_OK)
+@limiter.limit("10/minute")
 async def get_order(
+    request: Request,
     order_id: uuid.UUID,
     order_service: OrderService = Depends(get_order_service)
 ):
@@ -97,7 +106,9 @@ async def get_order(
     return order
 
 @router.put("/{order_id}", response_model=OrderResponseSchema, status_code=status_fastapi.HTTP_200_OK)
+@limiter.limit("10/minute")
 async def update_order_status(
+    request: Request,
     order_id: uuid.UUID,
     order_update: OrderUpdateStatusSchema,
     order_service: OrderService = Depends(get_order_service)

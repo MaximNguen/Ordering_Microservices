@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Type, Union
 from pydantic import BaseModel, Field
 import uuid
 
@@ -13,6 +13,7 @@ class EventType(str, Enum):
     DELIVERY_UPDATED = "delivery.updated"
     PRODUCT_CREATED = "product.created"
     PRODUCT_UPDATED = "product.updated"
+    DELIVERY_RESPONSE = "delivery_response"
 
 
 class BaseEvent(BaseModel):
@@ -27,7 +28,6 @@ class BaseEvent(BaseModel):
 
 
 class OrderItemData(BaseModel):
-    """Схема для элемента заказа в событии"""
     product_id: str
     product_name: str
     quantity: int
@@ -35,22 +35,26 @@ class OrderItemData(BaseModel):
 
 
 class OrderCreatedEvent(BaseEvent):
-    """Событие создания заказа"""
     event_type: EventType = EventType.ORDER_CREATED
     
     class Data(BaseModel):
         order_id: str
         user_id: str
         total_amount: float
-        status: str  # OrderStatus как строка
+        status: str
         items: List[OrderItemData]
         created_at: datetime
         
     data: Data
+    
+    def model_dump(self, **kwargs) -> Dict[str, Any]:
+        data = super().model_dump(**kwargs)
+        if isinstance(data.get('data'), dict):
+            return data
+        return data
 
 
 class OrderStatusChangedEvent(BaseEvent):
-    """Событие изменения статуса заказа"""
     event_type: EventType = EventType.ORDER_STATUS_CHANGED
     
     class Data(BaseModel):
@@ -63,7 +67,6 @@ class OrderStatusChangedEvent(BaseEvent):
 
 
 class DeliveryCreatedEvent(BaseEvent):
-    """Событие создания доставки"""
     event_type: EventType = EventType.DELIVERY_CREATED
     
     class Data(BaseModel):
@@ -79,7 +82,6 @@ class DeliveryCreatedEvent(BaseEvent):
 
 
 class DeliveryStatusChangedEvent(BaseEvent):
-    """Событие изменения статуса доставки"""
     event_type: EventType = EventType.DELIVERY_STATUS_CHANGED
     
     class Data(BaseModel):
@@ -95,7 +97,6 @@ class DeliveryStatusChangedEvent(BaseEvent):
 
 
 class DeliveryUpdatedEvent(BaseEvent):
-    """Событие обновления доставки (общее)"""
     event_type: EventType = EventType.DELIVERY_UPDATED
     
     class Data(BaseModel):
@@ -108,7 +109,6 @@ class DeliveryUpdatedEvent(BaseEvent):
 
 
 class ProductCreatedEvent(BaseEvent):
-    """Событие создания продукта"""
     event_type: EventType = EventType.PRODUCT_CREATED
     
     class Data(BaseModel):
@@ -122,7 +122,6 @@ class ProductCreatedEvent(BaseEvent):
 
 
 class ProductUpdatedEvent(BaseEvent):
-    """Событие обновления продукта"""
     event_type: EventType = EventType.PRODUCT_UPDATED
     
     class Data(BaseModel):
@@ -133,3 +132,29 @@ class ProductUpdatedEvent(BaseEvent):
         updated_at: datetime
         
     data: Data
+    
+class DeliveryResponseEvent(BaseEvent):
+    """Событие ответа от сервиса доставки"""
+    event_type: EventType = EventType.DELIVERY_RESPONSE
+    data: Dict[str, Any]
+
+def event_from_dict(data: Dict[str, Any]) -> BaseEvent:
+    """Создает конкретный объект события из словаря"""
+    event_type = data.get("event_type")
+    
+    event_classes = {
+        EventType.ORDER_CREATED: OrderCreatedEvent,
+        EventType.ORDER_STATUS_CHANGED: OrderStatusChangedEvent,
+        EventType.DELIVERY_CREATED: DeliveryCreatedEvent,
+        EventType.DELIVERY_STATUS_CHANGED: DeliveryStatusChangedEvent,
+        EventType.DELIVERY_UPDATED: DeliveryUpdatedEvent,
+        EventType.PRODUCT_CREATED: ProductCreatedEvent,
+        EventType.PRODUCT_UPDATED: ProductUpdatedEvent,
+        EventType.DELIVERY_RESPONSE: DeliveryResponseEvent,
+    }
+    
+    event_class = event_classes.get(event_type)
+    if not event_class:
+        raise ValueError(f"Unknown event type: {event_type}")
+    
+    return event_class(**data)

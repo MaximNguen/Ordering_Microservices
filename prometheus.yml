@@ -1,0 +1,30 @@
+scrape_configs:
+  - job_name: 'user-service'
+    dns_sd_configs:
+      - names: ['user-service']
+        port: 8000
+    metrics_path: '/metrics'
+
+  - job_name: 'delivery-service'
+    dns_sd_configs:
+      - names: ['delivery-service']
+        port: 8001
+    metrics_path: '/metrics'
+    
+  - job_name: 'order-service'
+    dns_sd_configs:
+      - names: ['order-service']
+        port: 8002
+    metrics_path: '/metrics'
+
+  - job_name: 'product-service'
+    dns_sd_configs:
+      - names: ['product-service']
+        port: 8003
+    metrics_path: '/metrics'
+
+  - job_name: 'gateway-service'
+    dns_sd_configs:
+      - names: ['gateway-service']
+        port: 8004
+    metrics_path: '/metrics'

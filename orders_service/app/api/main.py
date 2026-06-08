@@ -1,3 +1,4 @@
+# orders_service/main.py (исправленный)
 import asyncio
 from contextlib import asynccontextmanager
 import logging
@@ -7,8 +8,6 @@ from pathlib import Path
 from datetime import datetime
 
 from fastapi import FastAPI
-from aiokafka import AIOKafkaConsumer
-import json
 
 try:
     from dotenv import load_dotenv
@@ -24,18 +23,15 @@ from app.core.database import AsyncSessionLocal
 from app.repositories.orders import OrderRepository
 from app.services.orders import OrderService
 from app.kafka.handlers import OrderKafkaHandlers
+from app.core.cache_listener import CacheInvalidationListener
+from cache_settings.redis_client import init_redis, close_redis
+from kafka_service.kafka.consumer import kafka_consumer
+from kafka_service.kafka.producer import kafka_producer
+from kafka_service.kafka.events import EventType
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
-
-def _find_file_handler(logger: logging.Logger, log_file: Path) -> RotatingFileHandler | None:
-    target = log_file.resolve()
-    for handler in logger.handlers:
-        if isinstance(handler, RotatingFileHandler):
-            try:
-                if Path(handler.baseFilename).resolve() == target:
-                    return handler
-            except OSError:
-                continue
-    return None
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
 
 def _configure_logging() -> None:
@@ -52,89 +48,75 @@ def _configure_logging() -> None:
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
 
-    file_handler = _find_file_handler(root_logger, log_file)
-    if file_handler is None:
-        file_handler = RotatingFileHandler(
-            log_file,
-            maxBytes=max_bytes,
-            backupCount=backup_count,
-            encoding="utf-8",
-        )
-        file_handler.setLevel(log_level)
-        file_handler.setFormatter(
-            logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-        )
-        root_logger.addHandler(file_handler)
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+        encoding="utf-8",
+    )
+    file_handler.setLevel(log_level)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    )
+    root_logger.addHandler(file_handler)
 
     for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         uvicorn_logger = logging.getLogger(logger_name)
         uvicorn_logger.setLevel(log_level)
-        if not uvicorn_logger.propagate and _find_file_handler(uvicorn_logger, log_file) is None:
+        if not uvicorn_logger.propagate:
             uvicorn_logger.addHandler(file_handler)
 
 
 _configure_logging()
 logger = logging.getLogger(__name__)
 
-kafka_handlers = None
-kafka_consumer = None
+cache_listener = CacheInvalidationListener()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # await create_db_and_tables()
-    logger.info("Starting database initialization.")
+    logger.info("Starting Orders Service...")
+    
+    await init_redis()
+    cache_listener.start()
+    
+    await kafka_consumer.start()
+    await kafka_producer.start()
+    logger.info("Kafka producer started")
+    
     async with AsyncSessionLocal() as session:
         order_repo = OrderRepository(db=session)
         order_service = OrderService(order_repo=order_repo)
+        
         kafka_handlers = OrderKafkaHandlers(order_service)
-        await kafka_handlers.start_producer()
-
-        kafka_consumer = AIOKafkaConsumer(
-            "order.events",
-            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
-            group_id="orders-service-group",
-            auto_offset_reset="earliest",
-            value_deserializer=lambda v: json.loads(v.decode("utf-8")) if v else None,
+        
+        kafka_consumer.register_handler(EventType.ORDER_CREATED, kafka_handlers.handle_order_created)
+        kafka_consumer.register_handler(EventType.ORDER_STATUS_CHANGED, kafka_handlers.handle_order_updated)
+        
+        await kafka_consumer.start(
+            topics=["order.events", "order.requests"],
+            group_id="orders-service-group"
         )
-        await kafka_consumer.start()
-        logger.info("Kafka consumer started for orders service.")
-
-        async def consume_loop():
-            async for msg in kafka_consumer:
-                try:
-                    event = msg.value
-                    event_type = event.get("event_type")
-
-                    if event_type == "order.created":
-                        await kafka_handlers.handle_order_created(event)
-                    elif event_type == "order.status.changed":
-                        await kafka_handlers.handle_order_updated(event)
-                    else:
-                        logger.warning(f"Unknown event type: {event_type}")
-
-                except Exception as e:
-                    logger.error(f"Error processing message: {e}")
-
-        app.state.consume_task = asyncio.create_task(consume_loop())
-
+        logger.info("Kafka consumer started for orders service")
+        
+        app.state.kafka_handlers = kafka_handlers
+        app.state.order_service = order_service
+        
         yield
-
-        if hasattr(app.state, "consume_task"):
-            app.state.consume_task.cancel()
-            try:
-                await app.state.consume_task
-            except asyncio.CancelledError:
-                pass
+        
         await kafka_consumer.stop()
-        await kafka_handlers.stop_producer()
-    logger.info("Shutting down.")
+        await kafka_producer.stop()
+        logger.info("Kafka stopped")
+    
+    await cache_listener.stop()
+    await close_redis()
+    logger.info("Orders Service shutdown complete")
 
 
-app = FastAPI(title="Orders service", lifespan=lifespan)
+app = FastAPI(title="Orders Service", lifespan=lifespan)
 
 app.include_router(orders.router)
 
 @app.get("/")
 async def root():
-    return {"message": "Orders service is running"}
+    return {"message": "Orders Service is running"}
