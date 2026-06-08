@@ -184,9 +184,7 @@ instrumentator = Instrumentator(
     inprogress_name="http_requests_inprogress",
     inprogress_labels=True,
 )
-
 instrumentator.add().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
-
 app.include_router(delivery.router, dependencies=[Depends(require_service_auth)])
 
 @app.get("/")

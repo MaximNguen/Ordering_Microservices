@@ -303,6 +303,15 @@ services:
     ports:
       - "8004:8004"
     restart: unless-stopped
+    
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
 
 volumes:
   users_db_data:
