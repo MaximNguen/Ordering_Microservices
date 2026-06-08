@@ -44,3 +44,4 @@ typing_extensions==4.15.0
 uvicorn==0.47.0
 wrapt==2.2.1
 prometheus_client==0.25.0
+prometheus-fastapi-instrumentator==8.0.0
