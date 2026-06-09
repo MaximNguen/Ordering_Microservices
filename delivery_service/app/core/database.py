@@ -18,5 +18,5 @@ AsyncSessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_
 async def create_db_and_tables():
     """Отвечает за создание базы данных и таблиц при запуске приложения."""
     async with engine.begin() as conn:
-        logger.info("Создание базы данных и таблиц...")
+        logger.info("Creating database and tables...")
         await conn.run_sync(Base.metadata.create_all)

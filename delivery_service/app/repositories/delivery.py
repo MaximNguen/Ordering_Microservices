@@ -14,20 +14,20 @@ class DeliveryRepository:
         self.logger = logging.getLogger(__name__)
         
     async def get_by_delivery_id(self, delivery_id: uuid.UUID) -> Delivery | None:
-        self.logger.info(f"Получение доставки по ID: {delivery_id}")
+        self.logger.info(f"Getting delivery by ID: {delivery_id}")
         try:
             result = await self.db.scalar(select(Delivery).where(Delivery.delivery_id == delivery_id))
         except Exception as e:
-            self.logger.error(f"Ошибка при получении доставки по ID: {delivery_id}, ошибка: {e}")
+            self.logger.error(f"Error occurred while fetching delivery by ID: {delivery_id}, error: {e}")
             result = None
         return result
     
     async def get_all(self, skip: int = 0, limit: int = 100) -> List[Delivery]:
-        self.logger.info("Получение всех доставок")
+        self.logger.info("Getting all deliveries with skip=%d and limit=%d", skip, limit)
         try:
             result = await self.db.scalars(select(Delivery).offset(skip).limit(limit))
         except Exception as e:
-            self.logger.error(f"Ошибка при получении всех доставок, ошибка: {e}")
+            self.logger.error(f"Error occurred while fetching all deliveries, error: {e}")
             result = []
         return list(result)
     
@@ -42,7 +42,7 @@ class DeliveryRepository:
         status: DeliveryStatus | None = None,
     ) -> Delivery:
         self.logger.info(
-            "Создание новой доставки (order_id=%s, delivery_person_id=%s)",
+            "Creating new delivery (order_id=%s, delivery_person_id=%s)",
             order_id,
             delivery_person_id,
         )
@@ -66,7 +66,7 @@ class DeliveryRepository:
             await self.db.commit()
             await self.db.refresh(delivery)
         except Exception as e:
-            self.logger.error(f"Ошибка при создании доставки: {delivery}, ошибка: {e}")
+            self.logger.error(f"Error occurred while creating delivery: {delivery}, error: {e}")
             await self.db.rollback()
             raise
         return delivery
@@ -77,10 +77,10 @@ class DeliveryRepository:
         *,
         status: DeliveryStatus | None = None,
     ) -> Delivery:
-        self.logger.info("Обновление доставки (delivery_id=%s)", delivery_id)
+        self.logger.info("Updating delivery (delivery_id=%s)", delivery_id)
         delivery = await self.get_by_delivery_id(delivery_id)
         if not delivery:
-            raise ValueError(f"Доставка с ID: {delivery_id} не найдена")
+            raise ValueError(f"Delivery with ID: {delivery_id} not found")
 
         if status is not None:
             delivery.status = status
@@ -89,24 +89,24 @@ class DeliveryRepository:
             await self.db.commit()
             await self.db.refresh(delivery)
         except Exception as e:
-            self.logger.error(f"Ошибка при обновлении доставки: {delivery}, ошибка: {e}")
+            self.logger.error(f"Error occurred while updating delivery: {delivery}, error: {e}")
             await self.db.rollback()
             raise
         return delivery
     
     # app/repositories/delivery.py
     async def delete_delivery(self, delivery_id: uuid.UUID) -> None:
-        self.logger.info(f"Удаление доставки (delivery_id={str(delivery_id)})")
+        self.logger.info(f"Deleting delivery (delivery_id={str(delivery_id)})")
         try:
             delivery = await self.db.get(Delivery, delivery_id)
             
             if not delivery:
-                raise ValueError(f"Доставка с ID: {delivery_id} не найдена для удаления.")
+                raise ValueError(f"Delivery with ID: {delivery_id} not found for deletion.")
             delivery.status = DeliveryStatus.DELETED
             await self.db.commit()
             await self.db.refresh(delivery)
-            self.logger.info(f"Доставка {delivery_id} успешно удалена (статус изменен на DELETED)")
+            self.logger.info(f"Delivery {delivery_id} successfully deleted (status changed to DELETED)")
         except Exception as e:
-            self.logger.error(f"Ошибка при удалении доставки с ID: {delivery_id}, ошибка: {e}")
+            self.logger.error(f"Error occurred while deleting delivery with ID: {delivery_id}, error: {e}")
             await self.db.rollback()
             raise

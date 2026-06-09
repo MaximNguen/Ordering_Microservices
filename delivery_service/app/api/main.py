@@ -134,7 +134,7 @@ async def lifespan(app: FastAPI):
         logger.info("Kafka stopped")
     await close_redis()
     await cache_listener.stop()
-    logger.info("Заканчиваем работу.")
+    logger.info("Stop work.")
     
 app = FastAPI(
     title="Сервис доставки",

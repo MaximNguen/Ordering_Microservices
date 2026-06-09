@@ -43,7 +43,7 @@ class DeliveryService:
         })
 
     async def create_delivery(self, delivery_create: DeliveryCreate) -> DeliveryResponse | None:
-        self.logger.info(f"Создание доставки для заказа {delivery_create.order_id}")
+        self.logger.info(f"Creating delivery for order: {delivery_create.order_id}")
         start_time = time()
         if not SKIP_ORDER_CHECK:
             if not INTERNAL_CALL_TOKEN:
@@ -59,13 +59,13 @@ class DeliveryService:
                 
             if response.status_code != 200:
                 self.logger.warning(
-                    "Заказ не найден или недоступен: %s (status=%s)",
+                    "Order not found or unavailable: %s (status=%s)",
                     delivery_create.order_id,
                     response.status_code,
                 )
                 return None
         else:
-            self.logger.info(f"Пропускаем проверку заказа {delivery_create.order_id} (Kafka режим)")
+            self.logger.info(f"Skipping order check for order {delivery_create.order_id} (Kafka mode)")
         
         db_start_time = time()
         db_delivery = await self.delivery_repo.create_delivery(
@@ -89,7 +89,7 @@ class DeliveryService:
         return DeliveryResponse.model_validate(db_delivery)
     
     async def get_delivery_by_id(self, delivery_id: uuid.UUID) -> DeliveryResponse | None:
-        self.logger.info(f"Получение доставки по ID: {delivery_id}")
+        self.logger.info(f"Getting delivery by ID: {delivery_id}")
         start_time = time()
         cache_start = time()
         
@@ -98,7 +98,7 @@ class DeliveryService:
         cache_duration = time() - cache_start
         
         if cached_delivery:
-            self.logger.info(f"Доставка найдена в кеше: {delivery_id} (время: {cache_duration:.3f}s)")
+            self.logger.info(f"Delivery found in cache: {delivery_id} (time: {cache_duration:.3f}s)")
             return DeliveryResponse.model_validate(cached_delivery)
         
         db_start_time = time()
@@ -118,14 +118,14 @@ class DeliveryService:
         return delivery_data
     
     async def get_all_deliveries(self, skip: int = 0, limit: int = 100) -> list[DeliveryResponse]:
-        self.logger.info(f"Получение всех доставок (skip={skip}, limit={limit})")
+        self.logger.info(f"Getting all deliveries (skip={skip}, limit={limit})")
         start_time = time()
         
         cache_key = DeliveryCacheKeys.ALL_DELIVERIES.format(skip=skip, limit=limit)
         cached_deliveries = await delivery_cache.get(cache_key)
         
         if cached_deliveries:
-            self.logger.info(f"Доставки найдены в кеше (skip={skip}, limit={limit})")
+            self.logger.info(f"Deliveries found in cache (skip={skip}, limit={limit})")
             return [DeliveryResponse.model_validate(delivery) for delivery in cached_deliveries]
         
         db_start_time = time()
@@ -144,7 +144,7 @@ class DeliveryService:
         return all_delivery
     
     async def update_delivery(self, delivery_id: uuid.UUID, delivery_update: DeliveryUpdate) -> DeliveryResponse | None:
-        self.logger.info(f"Обновление доставки с ID: {delivery_id}")
+        self.logger.info(f"Updating delivery with ID: {delivery_id}")
         start_time = time()
         
         try:
@@ -170,7 +170,7 @@ class DeliveryService:
         return DeliveryResponse.model_validate(db_delivery)
     
     async def delete_delivery(self, delivery_id: uuid.UUID) -> bool:
-        self.logger.info(f"Удаление доставки с ID: {delivery_id}")
+        self.logger.info(f"Deleting delivery with ID: {delivery_id}")
         start_time = time()
         db_delivery = await self.delivery_repo.get_by_delivery_id(delivery_id)
         
@@ -189,5 +189,5 @@ class DeliveryService:
             
             return True
         except Exception as e:
-            self.logger.error(f"Ошибка при удалении доставки с ID: {delivery_id}, ошибка: {e}")
+            self.logger.error(f"Error occurred while deleting delivery with ID: {delivery_id}, error: {e}")
             return False

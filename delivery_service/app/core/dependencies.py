@@ -12,14 +12,14 @@ logger = logging.getLogger(__name__)
 
 async def get_async_db():
     async with AsyncSessionLocal() as db:
-        logger.info("Получение асинхронной сессии базы данных...")
+        logger.info("Getting async database session...")
         yield db
-        logger.info("Асинхронная сессия базы данных закрыта.")
+        logger.info("Async database session closed.")
         
 def get_delivery_repository(db: AsyncSession = Depends(get_async_db)) -> DeliveryRepository:
-    logger.info("Получение репозитория доставки...")
+    logger.info("Getting delivery repository...")
     return DeliveryRepository(db=db)
 
 def get_delivery_service(delivery_repo: DeliveryRepository = Depends(get_delivery_repository)) -> DeliveryService:
-    logger.info("Получение сервиса доставки...")
+    logger.info("Getting delivery service...")
     return DeliveryService(delivery_repo=delivery_repo)
